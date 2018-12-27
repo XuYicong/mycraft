@@ -20,7 +20,7 @@ OBJ= $(SRC:.c=.o)
 # build executable
 
 $(EXE): $(OBJ)
-	$(CC) $(OBJ) -lSDL2 -lGL -lGLU $(CFLAGS) -o $(EXE) 
+	$(CC) $(OBJ) -lSDL2 -lGL -lGLEW $(CFLAGS) -o $(EXE) 
 
 # clean up compilation
 

@@ -6,8 +6,8 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
-#include <GL/gl.h>
-#include <GL/glu.h>
+//include <GL/gl.h>
+#include <GL/glew.h>
 #include <SDL2/SDL.h>
 #include <zlib.h>
 #include <stdio.h>
@@ -173,10 +173,11 @@ void login(){
 }
 char ct;
 void cht(){
+                    ct=1;
     char ch[255]="/log";
-    printf("Send message?(Y/n)");
+    /*printf("Send message?(Y/n)");
     fgets(ch,233,stdin);
-    if(ch[0]=='n'||ch[0]=='N')return;
+    if(ch[0]=='n'||ch[0]=='N')return;*/
     printf("\n>>>");
     fgets(ch,233,stdin);
     printf("%s\n",ch);
@@ -231,9 +232,8 @@ int hndl(){//Main logic
                     memcpy(sd+cur,rcv+org,8);cur+=8;
                     sd[0]=cur-1;
                     sen(cur);
-                    if(!(ct))
+                    if(!ct)
                     cht();
-                    ct++;
                 break;
                 case 0x22://Chunk data
                     l=rd(4);
@@ -294,11 +294,52 @@ int hndl(){//Main logic
 }
 void play(){
     if(SDL_Init(SDL_INIT_VIDEO)){puts("SDL Init error");return;}
-    SDL_Window*win=SDL_CreateWindow("Mycraft",SDL_WINDOWPOS_CENTERED,SDL_WINDOWPOS_CENTERED,1000,700,SDL_WINDOW_SHOWN);
+    SDL_Window*win=SDL_CreateWindow("Mycraft",SDL_WINDOWPOS_CENTERED,SDL_WINDOWPOS_CENTERED,1000,700,SDL_WINDOW_OPENGL);
     if(!win){printf("Create window error %s\n",SDL_GetError());return;}
-    SDL_Renderer*ren=SDL_CreateRenderer(win,-1,SDL_RENDERER_ACCELERATED);
-    if(!ren){printf("Renderer error %s\n",SDL_GetError());return;}
+    SDL_GLContext contx;
+    if(NULL==(contx=SDL_GL_CreateContext(win))){printf("Creat context error %s\n",SDL_GetError());return;}
+    if(SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK,SDL_GL_CONTEXT_PROFILE_CORE)|SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION,2))puts("GL_SetAttribute error");
+    glewExperimental = GL_TRUE;glewInit();
+    float blue=1;
+    glClearColor(0.5,0.2,blue,0.8);
+    glClear(GL_COLOR_BUFFER_BIT);
+    GLfloat cube[8][3]={	{ -0.5,  0.5,  0.5 }, // Top left
+	{  0.5,  0.5,  0.5 }, // Top right
+	{  0.5, -0.5,  0.5 }, // Bottom right 
+	{ -0.5, -0.5,  0.5 },	{ -0.5,  0.5,  -0.5 }, // Top left
+	{  0.5,  0.5,  -0.5 }, // Top right
+	{  0.5, -0.5,  -0.5 }, // Bottom right 
+	{ -0.5, -0.5,  -0.5 }};
+    GLuint vbo,vao;glGenBuffers(1,&vbo);glGenVertexArrays(1,&vao);
+    glBindBuffer(GL_ARRAY_BUFFER,vbo);
+    glBufferData(GL_ARRAY_BUFFER,24*sizeof(GLfloat),cube,GL_STATIC_DRAW);
+    glBindVertexArray(vao);glVertexAttribPointer(0,3,GL_FLOAT,GL_FALSE,0,0);
+    glEnableVertexAttribArray(0);
+    FILE*f=fopen("vert.glsl","r");
+    char*const ipt=malloc(23333);
+    int I=-1;while(~(ipt[++I]=fgetc(f)));ipt[I--]=0;
+    int shaderProgram=glCreateProgram(),shaderID=glCreateShader(GL_VERTEX_SHADER);
+    glAttachShader(shaderProgram,shaderID);
+    glShaderSource(shaderID,1,(const char*const*)&ipt,&I);free(ipt);
+    glCompileShader(shaderID);
+    glLinkProgram(shaderProgram);glUseProgram(shaderProgram);
+    glEnable(GL_DEPTH_TEST);glDepthFunc(GL_LEQUAL);
+    SDL_GL_SwapWindow(win);
+        SDL_Event event;
     while(1){
+        if(SDL_PollEvent(&event)){
+            if(event.type==SDL_QUIT)break;
+            if(event.type==SDL_KEYDOWN){
+                if(event.key.keysym.sym==SDLK_ESCAPE)break;
+                if(event.key.keysym.sym==SDLK_t){
+                    ct=0;
+                    blue*=-1;
+                    glClearColor(0.5,0.2,blue,0.8);
+                    glClear(GL_COLOR_BUFFER_BIT);SDL_GL_SwapWindow(win);
+                }
+            }
+            continue;
+        }
         reciv();
         cur=0;
         rdVar();//Packet length
@@ -307,7 +348,7 @@ void play(){
         }
         if(hndl())break;
     }
-    SDL_DestroyRenderer(ren);
+    SDL_GL_DeleteContext(contx);
     SDL_DestroyWindow(win);
     SDL_Quit();
 }
