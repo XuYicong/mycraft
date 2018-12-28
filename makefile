@@ -3,29 +3,32 @@ EXE_DIR = .
 EXE = $(EXE_DIR)/mycraft
 
 SRC= mycraft.c
-
 # generic build details
-
+CP=     g++
 CC=     gcc
 COPT=    -g
 CFLAGS= -lz
 
 # compile to  object code
 
-OBJ= $(SRC:.c=.o)
+COBJ= $(SRC:.c=.o)
 
-.c.o:
+.c.o: 
 	$(CC) $(COPT) -c -o $@ $< $(CFLAGS)  -Wall -Wpedantic -Warray-bounds
+
+
 
 # build executable
 
-$(EXE): $(OBJ)
-	$(CC) $(OBJ) -lSDL2 -lGL -lGLEW $(CFLAGS) -o $(EXE) 
+$(EXE): $(COBJ) mats.o
+	$(CC) $(COBJ) mats.o -lSDL2 -lm -lGL -lGLEW $(CFLAGS) -o $(EXE) 
 
+#mats.o:
+#	$(CP) -o mats.o mats.cpp
 # clean up compilation
 
 clean:
-	rm -f $(OBJ) $(EXE)
+	rm -f $(COBJ) $(EXE)
 
 # dependencies
-
+mats.o:mats.cpp

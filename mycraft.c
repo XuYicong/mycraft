@@ -6,7 +6,6 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
-//include <GL/gl.h>
 #include <GL/glew.h>
 #include <SDL2/SDL.h>
 #include <zlib.h>
@@ -20,6 +19,7 @@ const unsigned short port=8111;
 const char ip[]="202.115.22.200",username[]="Xyct";
 int cur=1,masz,iscp;
 unsigned char sd[203333],rcv[2033456];
+void mats(int);
 void wtVar(unsigned int a){
     do{
         sd[cur]=a&0x7f;
@@ -118,7 +118,6 @@ void ping(){
     puts("====Ping finished====");
 }
 void uncomp(){
-    //return;
     int ret=cur;
         cur=0;
         uLong flen=rdVar();//Packet length
@@ -292,6 +291,12 @@ int hndl(){//Main logic
             }
     return 0;
 }
+int shad(char *name,char*const ipt){
+    FILE*f=fopen(name,"r");
+    int I=-1;while(~(ipt[++I]=fgetc(f)));ipt[I]=0;
+    fclose(f);
+    return I;
+}
 void play(){
     if(SDL_Init(SDL_INIT_VIDEO)){puts("SDL Init error");return;}
     SDL_Window*win=SDL_CreateWindow("Mycraft",SDL_WINDOWPOS_CENTERED,SDL_WINDOWPOS_CENTERED,1000,700,SDL_WINDOW_OPENGL);
@@ -300,30 +305,69 @@ void play(){
     if(NULL==(contx=SDL_GL_CreateContext(win))){printf("Creat context error %s\n",SDL_GetError());return;}
     if(SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK,SDL_GL_CONTEXT_PROFILE_CORE)|SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION,2))puts("GL_SetAttribute error");
     glewExperimental = GL_TRUE;glewInit();
-    float blue=1;
-    glClearColor(0.5,0.2,blue,0.8);
-    glClear(GL_COLOR_BUFFER_BIT);
-    GLfloat cube[8][3]={	{ -0.5,  0.5,  0.5 }, // Top left
-	{  0.5,  0.5,  0.5 }, // Top right
-	{  0.5, -0.5,  0.5 }, // Bottom right 
-	{ -0.5, -0.5,  0.5 },	{ -0.5,  0.5,  -0.5 }, // Top left
-	{  0.5,  0.5,  -0.5 }, // Top right
-	{  0.5, -0.5,  -0.5 }, // Bottom right 
-	{ -0.5, -0.5,  -0.5 }};
+    GLfloat cube[144]={-1.0f,-1.0f,-1.0f, // triangle 1 : begin
+    -1.0f,-1.0f, 1.0f,
+    -1.0f, 1.0f, 1.0f, // triangle 1 : end
+    1.0f, 1.0f,-1.0f, // triangle 2 : begin
+    -1.0f,-1.0f,-1.0f,
+    -1.0f, 1.0f,-1.0f, // triangle 2 : end
+    1.0f,-1.0f, 1.0f,
+    -1.0f,-1.0f,-1.0f,
+    1.0f,-1.0f,-1.0f,
+    1.0f, 1.0f,-1.0f,
+    1.0f,-1.0f,-1.0f,
+    -1.0f,-1.0f,-1.0f,
+    -1.0f,-1.0f,-1.0f,
+    -1.0f, 1.0f, 1.0f,
+    -1.0f, 1.0f,-1.0f,
+    1.0f,-1.0f, 1.0f,
+    -1.0f,-1.0f, 1.0f,
+    -1.0f,-1.0f,-1.0f,
+    -1.0f, 1.0f, 1.0f,
+    -1.0f,-1.0f, 1.0f,
+    1.0f,-1.0f, 1.0f,
+    1.0f, 1.0f, 1.0f,
+    1.0f,-1.0f,-1.0f,
+    1.0f, 1.0f,-1.0f,
+    1.0f,-1.0f,-1.0f,
+    1.0f, 1.0f, 1.0f,
+    1.0f,-1.0f, 1.0f,
+    1.0f, 1.0f, 1.0f,
+    1.0f, 1.0f,-1.0f,
+    -1.0f, 1.0f,-1.0f,
+    1.0f, 1.0f, 1.0f,
+    -1.0f, 1.0f,-1.0f,
+    -1.0f, 1.0f, 1.0f,
+    1.0f, 1.0f, 1.0f,
+    -1.0f, 1.0f, 1.0f,
+    1.0f,-1.0f, 1.0f};
     GLuint vbo,vao;glGenBuffers(1,&vbo);glGenVertexArrays(1,&vao);
     glBindBuffer(GL_ARRAY_BUFFER,vbo);
-    glBufferData(GL_ARRAY_BUFFER,24*sizeof(GLfloat),cube,GL_STATIC_DRAW);
-    glBindVertexArray(vao);glVertexAttribPointer(0,3,GL_FLOAT,GL_FALSE,0,0);
+    glBindVertexArray(vao);
+    glBufferData(GL_ARRAY_BUFFER,sizeof(cube),cube,GL_STATIC_DRAW);
+    glVertexAttribPointer(0,3,GL_FLOAT,GL_FALSE,0,0);
     glEnableVertexAttribArray(0);
-    FILE*f=fopen("vert.glsl","r");
+    int shaderProgram=glCreateProgram(),vertID=glCreateShader(GL_VERTEX_SHADER),fragID=glCreateShader(GL_FRAGMENT_SHADER);
+    glAttachShader(shaderProgram,vertID);glAttachShader(shaderProgram,fragID);
     char*const ipt=malloc(23333);
-    int I=-1;while(~(ipt[++I]=fgetc(f)));ipt[I--]=0;
-    int shaderProgram=glCreateProgram(),shaderID=glCreateShader(GL_VERTEX_SHADER);
-    glAttachShader(shaderProgram,shaderID);
-    glShaderSource(shaderID,1,(const char*const*)&ipt,&I);free(ipt);
-    glCompileShader(shaderID);
+    int I=shad("vert.glsl",ipt);
+    glShaderSource(vertID,1,(const char*const*)&ipt,&I);
+    glCompileShader(vertID);
+    glGetShaderiv(vertID,GL_INFO_LOG_LENGTH,&I);
+    glGetShaderInfoLog(vertID,I,NULL,ipt);printf("Vert:%s",ipt);
+    I=shad("frag.glsl",ipt);
+    glShaderSource(fragID,1,(const char*const*)&ipt,&I);
+    glCompileShader(fragID);
+    glGetShaderiv(fragID,GL_INFO_LOG_LENGTH,&I);
+    glGetShaderInfoLog(fragID,I,NULL,ipt);printf("Frag:%s",ipt);
+    free(ipt);
     glLinkProgram(shaderProgram);glUseProgram(shaderProgram);
     glEnable(GL_DEPTH_TEST);glDepthFunc(GL_LEQUAL);
+    mats(shaderProgram);
+    float blue=.9;
+    glClearColor(0.5,0.2,blue,0.8);
+    glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);
+    glDrawArrays(GL_TRIANGLES,0,36);
     SDL_GL_SwapWindow(win);
         SDL_Event event;
     while(1){
@@ -335,7 +379,7 @@ void play(){
                     ct=0;
                     blue*=-1;
                     glClearColor(0.5,0.2,blue,0.8);
-                    glClear(GL_COLOR_BUFFER_BIT);SDL_GL_SwapWindow(win);
+                    glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);SDL_GL_SwapWindow(win);
                 }
             }
             continue;
@@ -348,6 +392,11 @@ void play(){
         }
         if(hndl())break;
     }
+    glDeleteShader(vertID);
+    glDeleteShader(fragID);
+    glDisableVertexAttribArray(0);
+    glDeleteBuffers(1,&vbo);
+    glDeleteVertexArrays(1,&vao);
     SDL_GL_DeleteContext(contx);
     SDL_DestroyWindow(win);
     SDL_Quit();
