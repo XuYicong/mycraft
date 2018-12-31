@@ -14,12 +14,21 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <time.h>
+#include <math.h>
 //202.115.22.200:8111
 const unsigned short port=8111;
 const char ip[]="202.115.22.200",username[]="Xyct";
+extern const double Pi;
 int cur=1,masz,iscp;
+double playerX,playerY,playerZ;
+float playerYaw,playerPitch;
 unsigned char sd[203333],rcv[2033456];
-void mats(int);
+void mats(int,double px,double py,double pz,double x,double y,double z,double,double);
+struct block{
+    int x,z;
+    short y;
+    unsigned short id;
+}mapData[337][257][337]={{{{.y=-1}}}};//21*16blocks=336blocks
 void wtVar(unsigned int a){
     do{
         sd[cur]=a&0x7f;
@@ -46,6 +55,11 @@ unsigned long long rd(int c){
     }
     cur+=c;
     return ret;
+}
+void wtF(char *ch,int c){
+    for(int i=1;i<=c;i++){
+        sd[cur++]=ch[c-i];
+    }
 }
 void rdF(char *ch,int c){
     for(int i=1;i<=c;i++){
@@ -189,6 +203,105 @@ void cht(){
     puts("Chat message sending.");
     sen(cur);
 }
+int shaderProgram,vertID,fragID;
+SDL_Window*win;
+double cubes[23333];
+int cubect;
+void draw(){
+    glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);
+    for(int i=0;i<cubect;i+=3){
+        mats(shaderProgram,cubes[i],cubes[i+1],cubes[i+2],playerX,playerY,playerZ,playerYaw,playerPitch);
+        glDrawArrays(GL_TRIANGLES,0,36);
+    }
+    SDL_GL_SwapWindow(win);
+}
+void move(){
+    if(abs(playerX*playerY*playerZ)<0.1)return;
+    int ret=cur;cur=1;sd[cur++]=0;sd[cur++]=0x11;
+    wtF((char*)&playerX,8);wtF((char*)&playerY,8);wtF((char*)&playerZ,8);wtF((char*)&playerYaw,4);wtF((char*)&playerPitch,4);
+    cur-=32;memcpy(rcv+cur,sd+cur,32);
+                    rdF((char*)&playerX,8);rdF((char*)&playerY,8);rdF((char*)&playerZ,8);
+                    rdF((char*)&playerYaw,4);rdF((char*)&playerPitch,4);
+    printf("New pos(%lf,%lf,%lf)\tYaw: %f\tPitch: %f\n",playerX,playerY,playerZ,playerYaw,playerPitch);
+    sd[cur++]=1;sd[0]=cur-1;sen(cur);cur=ret;
+}
+int bitLeft=0;
+unsigned long long theLong=0;
+int rdBit(int bits){
+    int ret=0;
+    for(int i=0;i<bits;i++){
+       if(bitLeft<=0){theLong=rd(8);bitLeft=64;}
+       ret|=(theLong&1)<<i;
+       theLong>>=1;bitLeft--;
+    }
+    return ret;
+}
+void rdChunk(){
+    printf("Chunk ");//Chunk data
+    int x=rd(4),z;
+    int mask,full;
+    printf("Coords: (%d,%d)\t",x,z=rd(4));
+    x*=16;z*=16;
+    printf("%sfull chunk\t",(full=rcv[cur++])?"Is ":"Not ");
+    printf("Mask: %x\t",mask=rdVar());
+    int l=rdVar();
+    printf("Data size: %d bytes\t",l);//Size of data in bytes
+    //int debug=cur;
+    int dataX=0,dataY=0,dataZ=0;
+    for(int i=0;i<16;i++){//Array of chunk section
+        if(mapData[0][0][0].y!=-1){
+            dataX=x-mapData[0][0][0].x;
+            dataZ=z-mapData[0][0][0].z;
+            while(dataX<0)dataX+=336;
+            while(dataZ<0)dataZ+=336;
+            dataX%=336;
+            dataZ%=336;
+          }
+         if(!((1<<i)&mask)){
+             for(int curx=0;curx<16;curx++)
+                for(int curz=0;curz<16;curz++)
+                     for(int cury=0;cury<16;cury++){
+                         mapData[curx+dataX][cury+dataY][curz+dataZ].x=curx+x;
+                        mapData[curx+dataX][cury+dataY][curz+dataZ].y=cury+dataY;
+                        mapData[curx+dataX][cury+dataY][curz+dataZ].z=curz+z;
+                          mapData[curx+dataX][cury+dataY][curz+dataZ].id=0;
+                    }
+        }else{//This section not empty
+              unsigned char bits=rcv[cur++];//Unsigned byte Bits per blocks
+              char pallete=bits<9;
+              if(pallete&&bits<4)bits=4;
+             if(!pallete)bits=14;
+              printf("\n%d%d\n",pallete,bits);
+             int palle[2333];
+             if(pallete){
+                 int size=rdVar();//Length
+                  for(int j=0;j<size;j++){//Array of Varint
+                    palle[j]=rdVar();
+                    //printf("%d ",palle[j]);
+                 }puts("Reading pallete");
+              }
+              printf("dataX: %d\tdataZ: %d",dataX,dataZ);
+              fflush(stdin);
+              puts("Flushed");
+              rdVar();
+            for(int curx=0;curx<16;curx++)
+                for(int curz=0;curz<16;curz++)
+                    for(int cury=0;cury<16;cury++){
+                        mapData[curx+dataX][cury+dataY][curz+dataZ].x=curx+x;
+                        mapData[curx+dataX][cury+dataY][curz+dataZ].y=cury+dataY;
+                        mapData[curx+dataX][cury+dataY][curz+dataZ].z=curz+z;
+                        mapData[curx+dataX][cury+dataY][curz+dataZ].id=pallete?palle[rdBit(bits)]:rdBit(bits);//Read the compacted data
+                    }
+            cur+=4096;//16*16*16, ignore light data;
+            //if(!IN Overworld)cur-=2048;
+        }//This section ends
+        dataY+=16;
+    }//Chunk sections end
+    if(full)cur+=256*4;//256 integers biomes;
+    //printf("\nExpected data: %d bytes, %d bytes in fact\tFull: %d\tcur: %d\n",l,cur-debug,full,cur);
+    int blockEntity=rdVar();//Number of block entities in NBT tags;
+    //printf("%d block entities\n",blockEntity);
+}
 int hndl(){//Main logic
     int l,id;
     double X,Y,Z;
@@ -202,6 +315,7 @@ int hndl(){//Main logic
                     printf("Position: (%lf,%lf,%lf)\n",X,Y,Z);
                     printf("Pitch: %d/256\tYaw: %d/256\t",rcv[cur],rcv[cur+1]);
                     cur+=2;
+                    cubes[cubect++]=X;cubes[cubect++]=Y;cubes[cubect++]=Z;
                     printf("Data: %d\t",(int)rd(4));
                     printf("Velocity: (%d,%d,%d)\n\n",(short)rd(2),(short)rd(2),(short)rd(2));
                 break;
@@ -234,11 +348,8 @@ int hndl(){//Main logic
                     if(!ct)
                     cht();
                 break;
-                case 0x22://Chunk data
-                    l=rd(4);
-                    printf("Chunk Coords: (%d,%llu)\t",l,rd(4));
-                    printf("%sfull chunk\t",rcv[cur++]?"Is ":"Not ");
-                    printf("Mask: %x\n",rdVar());
+                case 0x22://chunk data
+                    rdChunk();
                 break;
                 case 0x2e://Player abilities
                        //Send client settings
@@ -249,7 +360,7 @@ int hndl(){//Main logic
                       char locale[]="zh_CN";
                     wtVar(strlen(locale));
                     memcpy(sd+cur,locale,strlen(locale));cur+=strlen(locale);
-                    sd[cur++]=2;//Render distance
+                    sd[cur++]=3;//Render distance
                     wtVar(0);
                     sd[cur++]=0;//Chat colors
                     sd[cur++]=0x7f;//Display bit mask
@@ -271,11 +382,17 @@ int hndl(){//Main logic
                 break;
                 case 0x32://Player position and look
                     puts("========Get player position and look========");
-                    double X,Y,Z,Yaw,Pitch;
-                    rdF((char*)&X,8);rdF((char*)&Y,8);rdF((char*)&Z,8);rdF((char*)&Yaw,4);rdF((char*)&Pitch,4);
-                    printf("Player position: (%lf,%lf,%lf)\nPlayer look:\nYaw: %f\tPitch: %f\n",X,Y,Z,Yaw,Pitch);
+                    rdF((char*)&playerX,8);rdF((char*)&playerY,8);rdF((char*)&playerZ,8);
+                    rdF((char*)&playerYaw,4);rdF((char*)&playerPitch,4);
+                    printf("Player position: (%lf,%lf,%lf)\n\
+Player look:\nYaw: %f\tPitch: %f\n",playerX,playerY,playerZ,playerYaw,playerPitch);
+                    draw();
                     printf("Flag: %hhx\nTeleport ID: ",rcv[cur++]);
-                    printf("%d\n",rdVar());
+                    int tid;
+                    printf("%d\n",tid=rdVar());
+                    cur=1;sd[cur++]=0;sd[cur++]=0;//Packet ID
+                    wtVar(tid);sd[0]=cur-1;sen(cur);
+                    move();
                 break;
                 case 0x3d://Slot selection
                     printf("Slot number %d selected.\n",rcv[cur]);
@@ -299,55 +416,55 @@ int shad(char *name,char*const ipt){
 }
 void play(){
     if(SDL_Init(SDL_INIT_VIDEO)){puts("SDL Init error");return;}
-    SDL_Window*win=SDL_CreateWindow("Mycraft",SDL_WINDOWPOS_CENTERED,SDL_WINDOWPOS_CENTERED,1000,700,SDL_WINDOW_OPENGL);
+    win=SDL_CreateWindow("Mycraft",SDL_WINDOWPOS_CENTERED,SDL_WINDOWPOS_CENTERED,1000,700,SDL_WINDOW_OPENGL);
     if(!win){printf("Create window error %s\n",SDL_GetError());return;}
     SDL_GLContext contx;
     if(NULL==(contx=SDL_GL_CreateContext(win))){printf("Creat context error %s\n",SDL_GetError());return;}
     if(SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK,SDL_GL_CONTEXT_PROFILE_CORE)|SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION,2))puts("GL_SetAttribute error");
+    GLfloat cube[144]={-0.48f,-0.48f,-0.48f, // triangle 1 : begin
+    -0.48f,-0.48f, 0.48f,
+    -0.48f, 0.48f, 0.48f, // triangle 1 : end
+    0.48f, 0.48f,-0.48f, // triangle 2 : begin
+    -0.48f,-0.48f,-0.48f,
+    -0.48f, 0.48f,-0.48f, // triangle 2 : end
+    0.48f,-0.48f, 0.48f,
+    -0.48f,-0.48f,-0.48f,
+    0.48f,-0.48f,-0.48f,
+    0.48f, 0.48f,-0.48f,
+    0.48f,-0.48f,-0.48f,
+    -0.48f,-0.48f,-0.48f,
+    -0.48f,-0.48f,-0.48f,
+    -0.48f, 0.48f, 0.48f,
+    -0.48f, 0.48f,-0.48f,
+    0.48f,-0.48f, 0.48f,
+    -0.48f,-0.48f, 0.48f,
+    -0.48f,-0.48f,-0.48f,
+    -0.48f, 0.48f, 0.48f,
+    -0.48f,-0.48f, 0.48f,
+    0.48f,-0.48f, 0.48f,
+    0.48f, 0.48f, 0.48f,
+    0.48f,-0.48f,-0.48f,
+    0.48f, 0.48f,-0.48f,
+    0.48f,-0.48f,-0.48f,
+    0.48f, 0.48f, 0.48f,
+    0.48f,-0.48f, 0.48f,
+    0.48f, 0.48f, 0.48f,
+    0.48f, 0.48f,-0.48f,
+    -0.48f, 0.48f,-0.48f,
+    0.48f, 0.48f, 0.48f,
+    -0.48f, 0.48f,-0.48f,
+    -0.48f, 0.48f, 0.48f,
+    0.48f, 0.48f, 0.48f,
+    -0.48f, 0.48f, 0.48f,
+    0.48f,-0.48f, 0.48f};
     glewExperimental = GL_TRUE;glewInit();
-    GLfloat cube[144]={-1.0f,-1.0f,-1.0f, // triangle 1 : begin
-    -1.0f,-1.0f, 1.0f,
-    -1.0f, 1.0f, 1.0f, // triangle 1 : end
-    1.0f, 1.0f,-1.0f, // triangle 2 : begin
-    -1.0f,-1.0f,-1.0f,
-    -1.0f, 1.0f,-1.0f, // triangle 2 : end
-    1.0f,-1.0f, 1.0f,
-    -1.0f,-1.0f,-1.0f,
-    1.0f,-1.0f,-1.0f,
-    1.0f, 1.0f,-1.0f,
-    1.0f,-1.0f,-1.0f,
-    -1.0f,-1.0f,-1.0f,
-    -1.0f,-1.0f,-1.0f,
-    -1.0f, 1.0f, 1.0f,
-    -1.0f, 1.0f,-1.0f,
-    1.0f,-1.0f, 1.0f,
-    -1.0f,-1.0f, 1.0f,
-    -1.0f,-1.0f,-1.0f,
-    -1.0f, 1.0f, 1.0f,
-    -1.0f,-1.0f, 1.0f,
-    1.0f,-1.0f, 1.0f,
-    1.0f, 1.0f, 1.0f,
-    1.0f,-1.0f,-1.0f,
-    1.0f, 1.0f,-1.0f,
-    1.0f,-1.0f,-1.0f,
-    1.0f, 1.0f, 1.0f,
-    1.0f,-1.0f, 1.0f,
-    1.0f, 1.0f, 1.0f,
-    1.0f, 1.0f,-1.0f,
-    -1.0f, 1.0f,-1.0f,
-    1.0f, 1.0f, 1.0f,
-    -1.0f, 1.0f,-1.0f,
-    -1.0f, 1.0f, 1.0f,
-    1.0f, 1.0f, 1.0f,
-    -1.0f, 1.0f, 1.0f,
-    1.0f,-1.0f, 1.0f};
     GLuint vbo,vao;glGenBuffers(1,&vbo);glGenVertexArrays(1,&vao);
     glBindBuffer(GL_ARRAY_BUFFER,vbo);
     glBindVertexArray(vao);
     glBufferData(GL_ARRAY_BUFFER,sizeof(cube),cube,GL_STATIC_DRAW);
     glVertexAttribPointer(0,3,GL_FLOAT,GL_FALSE,0,0);
     glEnableVertexAttribArray(0);
-    int shaderProgram=glCreateProgram(),vertID=glCreateShader(GL_VERTEX_SHADER),fragID=glCreateShader(GL_FRAGMENT_SHADER);
+    shaderProgram=glCreateProgram(),vertID=glCreateShader(GL_VERTEX_SHADER),fragID=glCreateShader(GL_FRAGMENT_SHADER);
     glAttachShader(shaderProgram,vertID);glAttachShader(shaderProgram,fragID);
     char*const ipt=malloc(23333);
     int I=shad("vert.glsl",ipt);
@@ -363,27 +480,77 @@ void play(){
     free(ipt);
     glLinkProgram(shaderProgram);glUseProgram(shaderProgram);
     glEnable(GL_DEPTH_TEST);glDepthFunc(GL_LEQUAL);
-    mats(shaderProgram);
+    //mats(shaderProgram,0,0);
     float blue=.9;
-    glClearColor(0.5,0.2,blue,0.8);
+    glClearColor(0.5,0.4,blue,0.8);
     glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);
-    glDrawArrays(GL_TRIANGLES,0,36);
+    //glDrawArrays(GL_TRIANGLES,0,36);
     SDL_GL_SwapWindow(win);
-        SDL_Event event;
+    SDL_Event event;
+    short mouseX=-1,mouseY=-1;
+    long now=clock();
     while(1){
         if(SDL_PollEvent(&event)){
             if(event.type==SDL_QUIT)break;
             if(event.type==SDL_KEYDOWN){
+                //printf("Key name:%s\n",SDL_GetKeyName(event.key.keysym.sym));
                 if(event.key.keysym.sym==SDLK_ESCAPE)break;
                 if(event.key.keysym.sym==SDLK_t){
                     ct=0;
                     blue*=-1;
-                    glClearColor(0.5,0.2,blue,0.8);
-                    glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);SDL_GL_SwapWindow(win);
+                    //glClearColor(0.5,0.2,blue,0.8);
+                    //glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);
+                    //SDL_GL_SwapWindow(win);
                 }
+                double dx=.1*cos(playerYaw*Pi/180),dz=.1*sin(playerYaw*Pi/180);
+                if(event.key.keysym.sym==SDLK_w){
+                    playerX+=dx;playerZ+=dz;
+                    //draw();
+                    move();
+                }
+                if(event.key.keysym.sym==SDLK_a){
+                    playerX+=dz;playerZ-=dx;
+                    //draw();
+                    move();
+                }
+                if(event.key.keysym.sym==SDLK_s){
+                    playerX-=dx;playerZ-=dz;
+                    //draw();
+                    move();
+                }
+                if(event.key.keysym.sym==SDLK_d){
+                    playerX-=dz;playerZ+=dx;
+                    //draw();
+                    move();
+                }
+                if(event.key.keysym.sym==SDLK_SPACE){
+                    playerY+=0.0625;
+                    //draw();
+                    move();
+                }
+                if(event.key.keysym.sym==SDLK_LSHIFT||event.key.keysym.sym==SDLK_RSHIFT){
+                    playerY-=0.0625;
+                    //draw();
+                    move();
+                }
+            }
+            if(event.type==SDL_MOUSEMOTION){
+                double dx=event.motion.x-mouseX,dy=event.motion.y-mouseY;
+                if(abs(dx)+abs(dy)<10)continue;
+                if((~mouseX)&&abs(dx)+abs(dy)<100){
+                //puts("mouse motion");
+                    playerYaw+=(double)(dx)/-3;playerPitch+=(double)(dy)/3;
+                    if(playerPitch*playerPitch>8000)playerPitch*=89.4/abs(playerPitch);
+                    while(playerYaw<0)playerYaw+=360;
+                    while(playerYaw>360)playerYaw-=360;
+                    //draw();
+                }
+//                move();
+                mouseX=event.motion.x;mouseY=event.motion.y;
             }
             continue;
         }
+        if(clock()-now>233){draw();now=clock();}
         reciv();
         cur=0;
         rdVar();//Packet length
