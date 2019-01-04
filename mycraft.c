@@ -20,7 +20,7 @@ const unsigned short port=8111;
 const char ip[]="202.115.22.200",username[]="Xyct";
 extern const double Pi;
 int cur=1,masz,iscp;
-double playerX,playerY,playerZ;
+double playerX,playerY,playerZ,preX,preY,preZ;
 float playerYaw,playerPitch;
 unsigned char sd[203333],rcv[2033456];
 void mats(int,double px,double py,double pz,double x,double y,double z,double,double);
@@ -29,6 +29,7 @@ struct block{
     short y;
     unsigned short id;
 }mapData[337][257][337]={{{{.y=-1}}}};//21*16blocks=336blocks
+char vis[337][257][337];
 void wtVar(unsigned int a){
     do{
         sd[cur]=a&0x7f;
@@ -205,12 +206,48 @@ void cht(){
 }
 int shaderProgram,vertID,fragID;
 SDL_Window*win;
-double cubes[23333];
-int cubect;
+double cubes[23334],blocks[233345];
+int cubect,blockct;
+int dx[]={-1,0,0,1,0,0},dy[]={0,1,0,0,-1,0},dz[]={0,0,-1,0,0,1},flor=2333;
+void dfs(int x,int y,int z){
+    if(flor<0)return;
+    int dataX=x-mapData[0][0][0].x,dataZ=z-mapData[0][0][0].z;
+    while(dataX<0)dataX+=336;
+    while(dataZ<0)dataZ+=336;
+    dataX%=336;dataZ%=336;
+    vis[dataX][y][dataZ]=1;
+    for(int i=0;i<6;i++){
+        int X=x+dx[i],Y=y+dy[i],Z=z+dz[i];
+        if(abs(X+Y+Z-playerX-playerY-playerZ)<13){
+            if(mapData[(dataX+dx[i]+336)%336][Y][(dataZ+dz[i]+336)%336].id){
+                blocks[blockct++]=X;
+                blocks[blockct++]=Y;
+                blocks[blockct++]=Z;
+                vis[(dataX+dx[i]+336)%336][Y][(dataZ+dz[i]+336)%336]=1;
+            }else if(!vis[(dataX+dx[i]+336)%336][Y][(dataZ+dz[i]+336)%336]){
+                flor--;dfs(X,Y,Z);flor++;
+            }
+        }
+    }
+}
 void draw(){
+    if(abs(playerX+playerY+playerZ-preX-preY-preZ)>2){
+        blockct=0;
+        memset(blocks,0,sizeof(blocks));
+        memset(vis,0,sizeof(vis));
+        dfs(playerX,playerY,playerZ);
+        preX=playerX;preY=playerY;preZ=playerZ;
+    }
     glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);
     for(int i=0;i<cubect;i+=3){
         mats(shaderProgram,cubes[i],cubes[i+1],cubes[i+2],playerX,playerY,playerZ,playerYaw,playerPitch);
+        glDrawArrays(GL_TRIANGLES,0,36);
+    }
+    for(int i=0;i<blockct;i+=3){
+        mats(shaderProgram,blocks[i],blocks[i+1],blocks[i+2],playerX,playerY,playerZ,playerYaw,playerPitch);
+        GLuint ID=glGetUniformLocation(shaderProgram,"blockColor");
+        float cl[]={blocks[i],blocks[i+1],blocks[i+2],1};
+        glUniform4fv(ID,1,cl);
         glDrawArrays(GL_TRIANGLES,0,36);
     }
     SDL_GL_SwapWindow(win);
@@ -219,9 +256,9 @@ void move(){
     if(abs(playerX*playerY*playerZ)<0.1)return;
     int ret=cur;cur=1;sd[cur++]=0;sd[cur++]=0x11;
     wtF((char*)&playerX,8);wtF((char*)&playerY,8);wtF((char*)&playerZ,8);wtF((char*)&playerYaw,4);wtF((char*)&playerPitch,4);
-    cur-=32;memcpy(rcv+cur,sd+cur,32);
-                    rdF((char*)&playerX,8);rdF((char*)&playerY,8);rdF((char*)&playerZ,8);
-                    rdF((char*)&playerYaw,4);rdF((char*)&playerPitch,4);
+    //cur-=32;memcpy(rcv+cur,sd+cur,32);
+    //rdF((char*)&playerX,8);rdF((char*)&playerY,8);rdF((char*)&playerZ,8);
+    //rdF((char*)&playerYaw,4);rdF((char*)&playerPitch,4);
     printf("New pos(%lf,%lf,%lf)\tYaw: %f\tPitch: %f\n",playerX,playerY,playerZ,playerYaw,playerPitch);
     sd[cur++]=1;sd[0]=cur-1;sen(cur);cur=ret;
 }
@@ -243,7 +280,7 @@ void rdChunk(){
     printf("Coords: (%d,%d)\t",x,z=rd(4));
     x*=16;z*=16;
     printf("%sfull chunk\t",(full=rcv[cur++])?"Is ":"Not ");
-    printf("Mask: %x\t",mask=rdVar());
+    printf("%x\t",mask=rdVar());
     int l=rdVar();
     printf("Data size: %d bytes\t",l);//Size of data in bytes
     //int debug=cur;
@@ -271,18 +308,15 @@ void rdChunk(){
               char pallete=bits<9;
               if(pallete&&bits<4)bits=4;
              if(!pallete)bits=14;
-              printf("\n%d%d\n",pallete,bits);
+              //printf("\n%d%d\n",pallete,bits);
              int palle[2333];
              if(pallete){
                  int size=rdVar();//Length
                   for(int j=0;j<size;j++){//Array of Varint
                     palle[j]=rdVar();
                     //printf("%d ",palle[j]);
-                 }puts("Reading pallete");
+                 }//puts("Reading pallete");
               }
-              printf("dataX: %d\tdataZ: %d",dataX,dataZ);
-              fflush(stdin);
-              puts("Flushed");
               rdVar();
             for(int curx=0;curx<16;curx++)
                 for(int curz=0;curz<16;curz++)
@@ -300,7 +334,7 @@ void rdChunk(){
     if(full)cur+=256*4;//256 integers biomes;
     //printf("\nExpected data: %d bytes, %d bytes in fact\tFull: %d\tcur: %d\n",l,cur-debug,full,cur);
     int blockEntity=rdVar();//Number of block entities in NBT tags;
-    //printf("%d block entities\n",blockEntity);
+    printf("%d block entities\n",blockEntity);
 }
 int hndl(){//Main logic
     int l,id;
@@ -482,7 +516,7 @@ void play(){
     glEnable(GL_DEPTH_TEST);glDepthFunc(GL_LEQUAL);
     //mats(shaderProgram,0,0);
     float blue=.9;
-    glClearColor(0.5,0.4,blue,0.8);
+    glClearColor(0.5,0.5,blue,0.8);
     glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);
     //glDrawArrays(GL_TRIANGLES,0,36);
     SDL_GL_SwapWindow(win);
@@ -536,7 +570,7 @@ void play(){
             }
             if(event.type==SDL_MOUSEMOTION){
                 double dx=event.motion.x-mouseX,dy=event.motion.y-mouseY;
-                if(abs(dx)+abs(dy)<10)continue;
+                if(abs(dx)+abs(dy)<4)continue;
                 if((~mouseX)&&abs(dx)+abs(dy)<100){
                 //puts("mouse motion");
                     playerYaw+=(double)(dx)/-3;playerPitch+=(double)(dy)/3;
@@ -550,7 +584,7 @@ void play(){
             }
             continue;
         }
-        if(clock()-now>233){draw();now=clock();}
+        if(clock()-now>333){draw();now=clock();}
         reciv();
         cur=0;
         rdVar();//Packet length
@@ -558,6 +592,11 @@ void play(){
             uncomp();
         }
         if(hndl())break;
+    }
+    for(int i=0;i<80;i++){
+        for(int j=0;j<80;j++){
+            printf("%d ",mapData[i][(int)playerY][j].id);
+        }puts("");
     }
     glDeleteShader(vertID);
     glDeleteShader(fragID);
