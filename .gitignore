@@ -40,6 +40,7 @@ mycraft
 *.dSYM/
 *.su
 *.idb
+*.log
 *.pdb
 
 # Kernel Module Compile Results

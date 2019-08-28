@@ -104,7 +104,7 @@ void handshake(char status){
    sd[cur++]=0;
    /*Data*/
    //Protocol version
-   wtVar(404);
+   wtVar(498);//1.14.4 20190828
    //String length
    wtVar(strlen(ip));
    memcpy(sd+cur,ip,strlen(ip));
@@ -197,7 +197,7 @@ void cht(){
     printf("%s\n",ch);
     cur=1;
     sd[cur++]=0;
-    sd[cur++]=2;
+    sd[cur++]=3;
     wtVar(strlen(ch)-1);
     memcpy(sd+cur,ch,strlen(ch)-1);cur+=strlen(ch)-1;
     sd[0]=cur-1;
@@ -340,7 +340,7 @@ int hndl(){//Main logic
     int l,id;
     double X,Y,Z;
             switch(id=rdVar()){//Packet ID
-                case 0://Spawn Object
+                /*case 0://Spawn Object
                     printf("Spawn object EID: %d\t",rdVar());
                     //printf("UUID: \n");
                     cur+=16;//unsigned 128-bit integer
@@ -352,7 +352,7 @@ int hndl(){//Main logic
                     cubes[cubect++]=X;cubes[cubect++]=Y;cubes[cubect++]=Z;
                     printf("Data: %d\t",(int)rd(4));
                     printf("Velocity: (%d,%d,%d)\n\n",(short)rd(2),(short)rd(2),(short)rd(2));
-                break;
+                break;*/
                 case 0x0d://Server difficulty
                     printf("Difficulty: %s\n",rcv[cur]&1?rcv[cur]&2?"hard":"easy":rcv[cur]&2?"normal":"peaceful");
                 break;
@@ -360,32 +360,32 @@ int hndl(){//Main logic
                     printString();
                     puts("");
                 break;
-                case 0x11://Declare commands
+                case 0x10://Declare commands
                     printf("%d commands declared\n",rdVar());
                 break;
-                case 0x19://Plugin message
+                case 0x18://Plugin message
                     puts("Plugin message");
                 break;
-                case 0x1C://Entity status
+                case 0x1b://Entity status
                     printf("Entity ID: %d\nStatus: ",(int)rd(4));
                     printf("%hhx\n",rcv[cur]);
                 break;
-                case 0x21://Keep alive
+                case 0x20://Keep alive
                     puts("\tKeep alive");
                     int org=cur;
                     cur=1;
                     sd[cur++]=0;
-                    sd[cur++]=0x0E;
+                    sd[cur++]=0x0f;
                     memcpy(sd+cur,rcv+org,8);cur+=8;
                     sd[0]=cur-1;
                     sen(cur);
-                    if(!ct)
-                    cht();
+                    //if(!ct)
+                    //cht();
                 break;
-                case 0x22://chunk data
+                case 0x21://chunk data
                     rdChunk();
                 break;
-                case 0x2e://Player abilities
+                /*case 0x2e://Player abilities
                        //Send client settings
                     puts("========Sending client settings========");
                     cur=1;
@@ -401,7 +401,7 @@ int hndl(){//Main logic
                     wtVar(1);//Main hand
                     sd[0]=cur-1;
                     sen(cur);
-                break;
+                break;*/
                 case 0x25://Join game
                     printf("EID: %d\n",(int)rd(4));
                     cur++;//Game mode: survival
@@ -414,7 +414,7 @@ int hndl(){//Main logic
                     }//unsigned byte difficulty
                     //String level type default
                 break;
-                case 0x32://Player position and look
+                /*case 0x32://Player position and look
                     puts("========Get player position and look========");
                     rdF((char*)&playerX,8);rdF((char*)&playerY,8);rdF((char*)&playerZ,8);
                     rdF((char*)&playerYaw,4);rdF((char*)&playerPitch,4);
@@ -427,11 +427,11 @@ Player look:\nYaw: %f\tPitch: %f\n",playerX,playerY,playerZ,playerYaw,playerPitc
                     cur=1;sd[cur++]=0;sd[cur++]=0;//Packet ID
                     wtVar(tid);sd[0]=cur-1;sen(cur);
                     move();
-                break;
-                case 0x3d://Slot selection
+                break;*/
+                /*case 0x3d://Slot selection
                     printf("Slot number %d selected.\n",rcv[cur]);
-                break;
-                case 0x1b://Disconnect
+                break;*/
+                case 0x1a://Disconnect
                     puts("Disconnect for: ");
                     printString();
                     puts("");
@@ -450,7 +450,7 @@ int shad(char *name,char*const ipt){
 }
 void play(){
     if(SDL_Init(SDL_INIT_VIDEO)){puts("SDL Init error");return;}
-    win=SDL_CreateWindow("Mycraft",SDL_WINDOWPOS_CENTERED,SDL_WINDOWPOS_CENTERED,1000,700,SDL_WINDOW_OPENGL);
+    win=SDL_CreateWindow("Mycraft",SDL_WINDOWPOS_CENTERED,SDL_WINDOWPOS_CENTERED,1366,768,SDL_WINDOW_OPENGL);
     if(!win){printf("Create window error %s\n",SDL_GetError());return;}
     SDL_GLContext contx;
     if(NULL==(contx=SDL_GL_CreateContext(win))){printf("Creat context error %s\n",SDL_GetError());return;}
