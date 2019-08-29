@@ -24,12 +24,20 @@ double playerX,playerY,playerZ,preX,preY,preZ;
 float playerYaw,playerPitch;
 unsigned char sd[203333],rcv[2033456];
 void mats(int,double px,double py,double pz,double x,double y,double z,double,double);
-struct block{
+typedef struct chunkSection{
+    short num,pallete,bits;
+    long long data[64*14+5];
+    int palle[4096];
+} chunkSect;
+short chunkct;
+struct chunk{
     int x,z;
-    short y;
-    unsigned short id;
-}mapData[337][257][337]={{{{.y=-1}}}};//21*16blocks=336blocks
-char vis[337][257][337];
+    chunkSect section[16];
+}chk[444];
+struct block{
+    int x,y,z;
+}blk[123456];
+int blkct;
 void wtVar(unsigned int a){
     do{
         sd[cur]=a&0x7f;
@@ -209,7 +217,7 @@ SDL_Window*win;
 double cubes[23334],blocks[233345];
 int cubect,blockct;
 int dx[]={-1,0,0,1,0,0},dy[]={0,1,0,0,-1,0},dz[]={0,0,-1,0,0,1},flor=2333;
-void dfs(int x,int y,int z){
+/*void dfs(int x,int y,int z){
     if(flor<0)return;
     int dataX=x-mapData[0][0][0].x,dataZ=z-mapData[0][0][0].z;
     while(dataX<0)dataX+=336;
@@ -229,14 +237,22 @@ void dfs(int x,int y,int z){
             }
         }
     }
-}
+}*/
 void draw(){
-    if(abs(playerX+playerY+playerZ-preX-preY-preZ)>2){
-        blockct=0;
-        memset(blocks,0,sizeof(blocks));
-        memset(vis,0,sizeof(vis));
-        dfs(playerX,playerY,playerZ);
-        preX=playerX;preY=playerY;preZ=playerZ;
+    if(playerY<1||chunkct<9)return;
+    if(blkct<1){
+        for(int i=0;i<9;++i){
+            for(int j=0;j<16;++j){
+                if(chk[i].section[j].num<1)continue;
+                int last=0,bitct=0;
+                for(int longct=0;longct<chk[i].section[j].num;++longct){
+                    while(64-bitct>=chk[i].section[j].bits){
+                        if(last);
+                    }
+                    last=chk[i].section[j].data[longct]%(1<<(64-bitct));
+                }
+            }
+        }
     }
     glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);
     for(int i=0;i<cubect;i+=3){
@@ -264,16 +280,35 @@ void move(){
 }
 int bitLeft=0;
 unsigned long long theLong=0;
-int rdBit(int bits){
-    int ret=0;
-    for(int i=0;i<bits;i++){
-       if(bitLeft<=0){theLong=rd(8);bitLeft=64;}
-       ret|=(theLong&1)<<i;
-       theLong>>=1;bitLeft--;
+int rdNBTcpd(){//NBT compound
+    int id=rcv[cur++];
+    if(!id)return 1;
+    int l=rd(2);//Length of name
+    //printf("Name length %d\t",l);
+    cur+=l;
+    /*while(l>0){--l;
+        putchar(rcv[cur++]);
+    }*/
+    switch(id){
+        case 0xc://Long Array
+            l=rd(4);//Number of longs
+            //printf("Number of longs %d\n",l);
+            cur+=l*8;//Skip the longs
+        break;
+        default:
+        printf("Unrecognised NBT tag type %x\n",id);
     }
-    return ret;
+    return 0;
+}
+void rdNBT(){
+    cur++;//Root Compound Start 0x0a
+    int l=rd(2);//Length of title
+    cur+=l;//Skip title
+    while(!rdNBTcpd());
+    return;
 }
 void rdChunk(){
+    ++chunkct;
     printf("Chunk ");//Chunk data
     int x=rd(4),z;
     int mask,full;
@@ -281,55 +316,35 @@ void rdChunk(){
     x*=16;z*=16;
     printf("%sfull chunk\t",(full=rcv[cur++])?"Is ":"Not ");
     printf("%x\t",mask=rdVar());
+    rdNBT();
     int l=rdVar();
     printf("Data size: %d bytes\t",l);//Size of data in bytes
     //int debug=cur;
-    int dataX=0,dataY=0,dataZ=0;
+    int idx=0;
+    for(int i=0;i<443;++i)if(chk[i].section[0].num==0){
+        idx=i;break;
+    }
     for(int i=0;i<16;i++){//Array of chunk section
-        if(mapData[0][0][0].y!=-1){
-            dataX=x-mapData[0][0][0].x;
-            dataZ=z-mapData[0][0][0].z;
-            while(dataX<0)dataX+=336;
-            while(dataZ<0)dataZ+=336;
-            dataX%=336;
-            dataZ%=336;
-          }
-         if(!((1<<i)&mask)){
-             for(int curx=0;curx<16;curx++)
-                for(int curz=0;curz<16;curz++)
-                     for(int cury=0;cury<16;cury++){
-                         mapData[curx+dataX][cury+dataY][curz+dataZ].x=curx+x;
-                        mapData[curx+dataX][cury+dataY][curz+dataZ].y=cury+dataY;
-                        mapData[curx+dataX][cury+dataY][curz+dataZ].z=curz+z;
-                          mapData[curx+dataX][cury+dataY][curz+dataZ].id=0;
-                    }
-        }else{//This section not empty
-              unsigned char bits=rcv[cur++];//Unsigned byte Bits per blocks
-              char pallete=bits<9;
-              if(pallete&&bits<4)bits=4;
-             if(!pallete)bits=14;
-              //printf("\n%d%d\n",pallete,bits);
-             int palle[2333];
-             if(pallete){
-                 int size=rdVar();//Length
-                  for(int j=0;j<size;j++){//Array of Varint
-                    palle[j]=rdVar();
-                    //printf("%d ",palle[j]);
-                 }//puts("Reading pallete");
-              }
-              rdVar();
-            for(int curx=0;curx<16;curx++)
-                for(int curz=0;curz<16;curz++)
-                    for(int cury=0;cury<16;cury++){
-                        mapData[curx+dataX][cury+dataY][curz+dataZ].x=curx+x;
-                        mapData[curx+dataX][cury+dataY][curz+dataZ].y=cury+dataY;
-                        mapData[curx+dataX][cury+dataY][curz+dataZ].z=curz+z;
-                        mapData[curx+dataX][cury+dataY][curz+dataZ].id=pallete?palle[rdBit(bits)]:rdBit(bits);//Read the compacted data
-                    }
-            cur+=4096;//16*16*16, ignore light data;
-            //if(!IN Overworld)cur-=2048;
-        }//This section ends
-        dataY+=16;
+        if(!((1<<i)&mask)) continue;
+        rd(2);//Number of non-air blocks
+        unsigned char bits=rcv[cur++];//Unsigned byte Bits per blocks
+        char pallete=bits<9;
+        if(pallete&&bits<4)bits=4;
+        if(!pallete)bits=14;
+        chk[idx].section[i].pallete=pallete;
+        chk[idx].section[i].bits=bits;
+        //printf("\n%d%d\n",pallete,bits);
+        if(pallete){
+             int size=rdVar();//Length
+             for(int j=0;j<size;j++){//Array of Varint
+                chk[idx].section[i].palle[j]=rdVar();
+                //printf("%d ",palle[j]);
+             }//puts("Reading pallete");
+        }
+        int l=chk[idx].section[i].num=rdVar();//Number of longs
+        for(int j=0;j<l;++j){
+             chk[idx].section[i].data[j]=rd(8);
+        }
     }//Chunk sections end
     if(full)cur+=256*4;//256 integers biomes;
     //printf("\nExpected data: %d bytes, %d bytes in fact\tFull: %d\tcur: %d\n",l,cur-debug,full,cur);
@@ -340,7 +355,7 @@ int hndl(){//Main logic
     int l,id;
     double X,Y,Z;
             switch(id=rdVar()){//Packet ID
-                /*case 0://Spawn Object
+                case 0://Spawn Object
                     printf("Spawn object EID: %d\t",rdVar());
                     //printf("UUID: \n");
                     cur+=16;//unsigned 128-bit integer
@@ -352,7 +367,19 @@ int hndl(){//Main logic
                     cubes[cubect++]=X;cubes[cubect++]=Y;cubes[cubect++]=Z;
                     printf("Data: %d\t",(int)rd(4));
                     printf("Velocity: (%d,%d,%d)\n\n",(short)rd(2),(short)rd(2),(short)rd(2));
-                break;*/
+                break;
+                case 3:
+                    //printf("Spawn Mob\n");
+                break;
+                case 6:
+                    printf("An entity changes animation\n");
+                break;
+                case 10:
+                    //puts("Block action");
+                break;
+                case 11:
+                    puts("Block changes");
+                break;
                 case 0x0d://Server difficulty
                     printf("Difficulty: %s\n",rcv[cur]&1?rcv[cur]&2?"hard":"easy":rcv[cur]&2?"normal":"peaceful");
                 break;
@@ -363,12 +390,27 @@ int hndl(){//Main logic
                 case 0x10://Declare commands
                     printf("%d commands declared\n",rdVar());
                 break;
+                case 0x14:
+                    printf("My inventory changes\n");
+                break;
+                case 0x16:
+                    printf("Slot set\n");
+                break;
                 case 0x18://Plugin message
                     puts("Plugin message");
+                break;
+                case 0x19:
+                    printf("A sound plays\n");
                 break;
                 case 0x1b://Entity status
                     printf("Entity ID: %d\nStatus: ",(int)rd(4));
                     printf("%hhx\n",rcv[cur]);
+                break;
+                case 0x1c:
+                    puts("An explosion happens");
+                break;
+                case 0x1e:
+                    puts("Game state changes");
                 break;
                 case 0x20://Keep alive
                     puts("\tKeep alive");
@@ -384,24 +426,14 @@ int hndl(){//Main logic
                 break;
                 case 0x21://chunk data
                     rdChunk();
+                    //puts("Chunk OK");
                 break;
-                /*case 0x2e://Player abilities
-                       //Send client settings
-                    puts("========Sending client settings========");
-                    cur=1;
-                    sd[cur++]=0;
-                    sd[cur++]=4;
-                      char locale[]="zh_CN";
-                    wtVar(strlen(locale));
-                    memcpy(sd+cur,locale,strlen(locale));cur+=strlen(locale);
-                    sd[cur++]=3;//Render distance
-                    wtVar(0);
-                    sd[cur++]=0;//Chat colors
-                    sd[cur++]=0x7f;//Display bit mask
-                    wtVar(1);//Main hand
-                    sd[0]=cur-1;
-                    sen(cur);
-                break;*/
+                case 0x22:
+                    puts("An effect(sound/particle) is played");
+                break;
+                case 0x24:
+                    puts("Light levels of a chunk updated");
+                break;
                 case 0x25://Join game
                     printf("EID: %d\n",(int)rd(4));
                     cur++;//Game mode: survival
@@ -414,7 +446,36 @@ int hndl(){//Main logic
                     }//unsigned byte difficulty
                     //String level type default
                 break;
-                /*case 0x32://Player position and look
+                case 0x28:
+                    //puts("An entity moves");
+                break;
+                case 0x29:
+                    //puts("An entity rotates and moves");
+                break;
+                case 0x2a:
+                    //puts("An entity rotates");
+                break;
+                case 0x2b:
+                    puts("An entity initialized");
+                break;
+                case 0x31://Player abilities
+                       //Send client settings
+                    /*puts("========Sending client settings========");
+                    cur=1;
+                    sd[cur++]=0;
+                    sd[cur++]=4;
+                      char locale[]="zh_CN";
+                    wtVar(strlen(locale));
+                    memcpy(sd+cur,locale,strlen(locale));cur+=strlen(locale);
+                    sd[cur++]=3;//Render distance
+                    wtVar(0);
+                    sd[cur++]=0;//Chat colors
+                    sd[cur++]=0x7f;//Display bit mask
+                    wtVar(1);//Main hand
+                    sd[0]=cur-1;
+                    sen(cur);*/
+                break;
+                case 0x35://Player position and look
                     puts("========Get player position and look========");
                     rdF((char*)&playerX,8);rdF((char*)&playerY,8);rdF((char*)&playerZ,8);
                     rdF((char*)&playerYaw,4);rdF((char*)&playerPitch,4);
@@ -427,17 +488,57 @@ Player look:\nYaw: %f\tPitch: %f\n",playerX,playerY,playerZ,playerYaw,playerPitc
                     cur=1;sd[cur++]=0;sd[cur++]=0;//Packet ID
                     wtVar(tid);sd[0]=cur-1;sen(cur);
                     move();
-                break;*/
-                /*case 0x3d://Slot selection
+                break;
+                case 0x37:
+                    //puts("Destroy entity");
+                break;
+                case 0x3b:
+                    //puts("An entity head look changes");
+                break;
+                case 0x3f://Slot selection
                     printf("Slot number %d selected.\n",rcv[cur]);
-                break;*/
+                break;
+                case 0x43:
+                    //puts("Entity metadata received");
+                break;
+                case 0x45:
+                    //puts("Entity velocity received");
+                break;
+                case 0x46:
+                    //puts("Entity equipment");
+                break;
+                case 0x48:
+                    printf("Health: ");
+                    float health,saturation;
+                    int food;
+                    rdF((char*)&health,4);
+                    printf("%f/20\n",health);
+                    food=rdVar();
+                    printf("Food: %d/20\n",food);
+                    rdF((char*)&saturation,4);
+                    printf("saturation: %f/5\n",saturation);
+                break;
+                case 0x4e:
+                    //puts("Time changes");
+                    //printf("World age:%lld\t",rd(8));
+                    //printf("Time of day:%lld\n",rd(8));
+                break;
+                case 0x51:
+                    //puts("Plays hardcoded sound effect");
+                break;
+                case 0x56:
+                    //puts("An entity teleports");
+                break;
+                case 0x58:
+                    //puts("Entity properties changed");
+                break;
                 case 0x1a://Disconnect
                     puts("Disconnect for: ");
                     printString();
                     puts("");
                 return 1;
                 default:
-                    //printf("ID: %hhx\n",id);
+                    printf("ID: %hhx\n",id);
                 break;
             }
     return 0;
@@ -450,7 +551,7 @@ int shad(char *name,char*const ipt){
 }
 void play(){
     if(SDL_Init(SDL_INIT_VIDEO)){puts("SDL Init error");return;}
-    win=SDL_CreateWindow("Mycraft",SDL_WINDOWPOS_CENTERED,SDL_WINDOWPOS_CENTERED,1366,768,SDL_WINDOW_OPENGL);
+    win=SDL_CreateWindow("Mycraft",SDL_WINDOWPOS_CENTERED,SDL_WINDOWPOS_CENTERED,1440,900,SDL_WINDOW_OPENGL);
     if(!win){printf("Create window error %s\n",SDL_GetError());return;}
     SDL_GLContext contx;
     if(NULL==(contx=SDL_GL_CreateContext(win))){printf("Creat context error %s\n",SDL_GetError());return;}
@@ -584,7 +685,7 @@ void play(){
             }
             continue;
         }
-        if(clock()-now>333){draw();now=clock();}
+        //if(clock()-now>333){draw();now=clock();}
         reciv();
         cur=0;
         rdVar();//Packet length
@@ -593,11 +694,11 @@ void play(){
         }
         if(hndl())break;
     }
-    for(int i=0;i<80;i++){
+    /*for(int i=0;i<80;i++){
         for(int j=0;j<80;j++){
             printf("%d ",mapData[i][(int)playerY][j].id);
         }puts("");
-    }
+    }*/
     glDeleteShader(vertID);
     glDeleteShader(fragID);
     glDisableVertexAttribArray(0);
@@ -616,16 +717,18 @@ int main(int argc,char **argv){
    server.sin_family=AF_INET;
    server.sin_port=htons(port);
    server.sin_addr.s_addr=inet_addr(ip);
+   puts("Connecting...");
    if(connect(client,(struct sockaddr*)&server,sizeof(server))<0){
        puts("Connect error");
        return 1;
    }
-   puts("Connecting...");
     if(argc>1&&argv[1][0]=='p')ping();
     else{
-   login();
-   puts("========Successfully logged in========");
-    play();}
+        login();
+        puts("========Successfully logged in========");
+        play();//Main function
+    }
     close(client);
+    puts("\nbye");
    return 0;
 }
