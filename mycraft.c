@@ -19,11 +19,19 @@
 const unsigned short port=8111;
 const char ip[]="202.115.22.200",username[]="Xyct";
 extern const double Pi;
-int cur=1,masz,iscp;
+int cur=1,masz,iscp,tick;
 double playerX,playerY,playerZ,preX,preY,preZ;
 float playerYaw,playerPitch;
 unsigned char sd[203333],rcv[2033456];
+char nttyp[100][100]={"AreaEffectCloud","ArmorStand","Arrow","Bat","Blaze","Boat","cat","CaveSpider","Chicken","Cod","Cow","Creeper","Donkey","Dolphin","DragonFireball","Drowned","ElderGuardian","EnderCrystal","EnderDragon","Enderman","Endermite","EvocationFangs","EvocationIllager","XPOrb","EyeOfEnderSignal","FallingSand","FireworksRocketEntity","Ghast","Giant","Guardian","Horse","Husk","IllusionIllager","Item","ItemFrame","Fireball (ghast)","LeashKnot","Llama","LlamaSpit","LavaSlime (Magma Cube)","MinecartRideable","MinecartChest","MinecartCommandBlock"};
 void mats(int,double px,double py,double pz,double x,double y,double z,double,double);
+struct entity{
+    short type;
+    short vx,vy,vz;
+    float pitch,yaw;
+    double x,y,z;
+    char data[256];
+}ntt[20000];
 typedef struct chunkSection{
     short num,pallete,bits;
     long long data[64*14+5];
@@ -240,21 +248,27 @@ int dx[]={-1,0,0,1,0,0},dy[]={0,1,0,0,-1,0},dz[]={0,0,-1,0,0,1},flor=2333;
 }*/
 void draw(){
     if(playerY<1||chunkct<9)return;
-    if(blkct<1){
+    if(0&&blkct<1){
         for(int i=0;i<9;++i){
             for(int j=0;j<16;++j){
                 if(chk[i].section[j].num<1)continue;
                 int last=0,bitct=0;
                 for(int longct=0;longct<chk[i].section[j].num;++longct){
                     while(64-bitct>=chk[i].section[j].bits){
-                        if(last);
+                        if(last);//with increasing x coordinates, within rows of increasing z coordinates, within layers of increasing y coordinates. 
                     }
                     last=chk[i].section[j].data[longct]%(1<<(64-bitct));
                 }
             }
         }
     }
+    float offset=1;
+    if(tick<5000||tick>19000) offset=0.2;
+    else if(tick<6000) offset=0.2+(tick-5000.0)/1000*0.8;
+    else if(tick>18000) offset=1-(tick-18000.0)/1000*0.8;
+    glClearColor(offset*0.6,offset*0.6,offset*1,1);
     glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);
+    if(0){
     for(int i=0;i<cubect;i+=3){
         mats(shaderProgram,cubes[i],cubes[i+1],cubes[i+2],playerX,playerY,playerZ,playerYaw,playerPitch);
         glDrawArrays(GL_TRIANGLES,0,36);
@@ -265,7 +279,7 @@ void draw(){
         float cl[]={blocks[i],blocks[i+1],blocks[i+2],1};
         glUniform4fv(ID,1,cl);
         glDrawArrays(GL_TRIANGLES,0,36);
-    }
+    }}
     SDL_GL_SwapWindow(win);
 }
 void move(){
@@ -359,17 +373,28 @@ int hndl(){//Main logic
                     printf("Spawn object EID: %d\t",rdVar());
                     //printf("UUID: \n");
                     cur+=16;//unsigned 128-bit integer
-                    printf("Type: %hhx\n",rcv[cur++]);
+                    printf("Type: %hhx\n",rdVar());
                     rdF((char*)&X,8);rdF((char*)&Y,8);rdF((char*)&Z,8);
                     printf("Position: (%lf,%lf,%lf)\n",X,Y,Z);
                     printf("Pitch: %d/256\tYaw: %d/256\t",rcv[cur],rcv[cur+1]);
                     cur+=2;
-                    cubes[cubect++]=X;cubes[cubect++]=Y;cubes[cubect++]=Z;
+                    //cubes[cubect++]=X;cubes[cubect++]=Y;cubes[cubect++]=Z;
                     printf("Data: %d\t",(int)rd(4));
                     printf("Velocity: (%d,%d,%d)\n\n",(short)rd(2),(short)rd(2),(short)rd(2));
                 break;
-                case 3:
-                    //printf("Spawn Mob\n");
+                case 3://Spawn Mob
+                    printf("Spawn Mob EID: %d\t",l=rdVar());
+                    //printf("UUID: \n");
+                    cur+=16;//unsigned 128-bit integer
+                    int type=rdVar();
+                    ntt[l%=20000].type=type;
+                    printf("Type: %hhx(%s)\n",type,nttyp[type]);
+                    rdF((char*)&X,8);rdF((char*)&Y,8);rdF((char*)&Z,8);ntt[l].x=X,ntt[l].y=Y,ntt[l].z=Z;
+                    printf("Position: (%lf,%lf,%lf)\n",X,Y,Z);
+                    printf("Pitch: %d/256\tYaw: %d/256\tHead Pitch: %d/256",rcv[cur+1],rcv[cur],rcv[cur+2]);
+                    cur+=3;
+                    printf("Velocity: (%d,%d,%d)\n\n",(short)rd(2),(short)rd(2),(short)rd(2));
+                    //Entity metadata
                 break;
                 case 6:
                     printf("An entity changes animation\n");
@@ -403,8 +428,8 @@ int hndl(){//Main logic
                     printf("A sound plays\n");
                 break;
                 case 0x1b://Entity status
-                    printf("Entity ID: %d\nStatus: ",(int)rd(4));
-                    printf("%hhx\n",rcv[cur]);
+                    printf("Entity ID: %d\nStatus: ",l=(int)rd(4));
+                    printf("%hhx\t%s\n",rcv[cur],nttyp[ntt[l%20000].type]);
                 break;
                 case 0x1c:
                     puts("An explosion happens");
@@ -432,7 +457,7 @@ int hndl(){//Main logic
                     puts("An effect(sound/particle) is played");
                 break;
                 case 0x24:
-                    puts("Light levels of a chunk updated");
+                    printf("Light levels of a chunk updated\t");
                 break;
                 case 0x25://Join game
                     printf("EID: %d\n",(int)rd(4));
@@ -520,8 +545,11 @@ Player look:\nYaw: %f\tPitch: %f\n",playerX,playerY,playerZ,playerYaw,playerPitc
                 break;
                 case 0x4e:
                     //puts("Time changes");
-                    //printf("World age:%lld\t",rd(8));
-                    //printf("Time of day:%lld\n",rd(8));
+                    rd(8);//printf("World age:%lld\t",rd(8));
+                    long long ticks=rd(8);tick=(ticks+6000)%24000;
+                    if((tick/20)%5)break;
+                    printf("Time of day:%lld\t\t",ticks);
+                    printf("%d -th tick of today, i.e. %02d:%02d\n",tick,tick*18/5/3600,(tick*18/5%3600)/60);
                 break;
                 case 0x51:
                     //puts("Plays hardcoded sound effect");
@@ -557,39 +585,6 @@ void play(){
     if(NULL==(contx=SDL_GL_CreateContext(win))){printf("Creat context error %s\n",SDL_GetError());return;}
     if(SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK,SDL_GL_CONTEXT_PROFILE_CORE)|SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION,2))puts("GL_SetAttribute error");
     GLfloat cube[144]={-0.48f,-0.48f,-0.48f, // triangle 1 : begin
-    -0.48f,-0.48f, 0.48f,
-    -0.48f, 0.48f, 0.48f, // triangle 1 : end
-    0.48f, 0.48f,-0.48f, // triangle 2 : begin
-    -0.48f,-0.48f,-0.48f,
-    -0.48f, 0.48f,-0.48f, // triangle 2 : end
-    0.48f,-0.48f, 0.48f,
-    -0.48f,-0.48f,-0.48f,
-    0.48f,-0.48f,-0.48f,
-    0.48f, 0.48f,-0.48f,
-    0.48f,-0.48f,-0.48f,
-    -0.48f,-0.48f,-0.48f,
-    -0.48f,-0.48f,-0.48f,
-    -0.48f, 0.48f, 0.48f,
-    -0.48f, 0.48f,-0.48f,
-    0.48f,-0.48f, 0.48f,
-    -0.48f,-0.48f, 0.48f,
-    -0.48f,-0.48f,-0.48f,
-    -0.48f, 0.48f, 0.48f,
-    -0.48f,-0.48f, 0.48f,
-    0.48f,-0.48f, 0.48f,
-    0.48f, 0.48f, 0.48f,
-    0.48f,-0.48f,-0.48f,
-    0.48f, 0.48f,-0.48f,
-    0.48f,-0.48f,-0.48f,
-    0.48f, 0.48f, 0.48f,
-    0.48f,-0.48f, 0.48f,
-    0.48f, 0.48f, 0.48f,
-    0.48f, 0.48f,-0.48f,
-    -0.48f, 0.48f,-0.48f,
-    0.48f, 0.48f, 0.48f,
-    -0.48f, 0.48f,-0.48f,
-    -0.48f, 0.48f, 0.48f,
-    0.48f, 0.48f, 0.48f,
     -0.48f, 0.48f, 0.48f,
     0.48f,-0.48f, 0.48f};
     glewExperimental = GL_TRUE;glewInit();
@@ -606,18 +601,18 @@ void play(){
     glShaderSource(vertID,1,(const char*const*)&ipt,&I);
     glCompileShader(vertID);
     glGetShaderiv(vertID,GL_INFO_LOG_LENGTH,&I);
-    glGetShaderInfoLog(vertID,I,NULL,ipt);printf("Vert:%s",ipt);
+    glGetShaderInfoLog(vertID,I,NULL,ipt);//printf("Vert:%s",ipt);
     I=shad("frag.glsl",ipt);
     glShaderSource(fragID,1,(const char*const*)&ipt,&I);
     glCompileShader(fragID);
     glGetShaderiv(fragID,GL_INFO_LOG_LENGTH,&I);
-    glGetShaderInfoLog(fragID,I,NULL,ipt);printf("Frag:%s",ipt);
+    glGetShaderInfoLog(fragID,I,NULL,ipt);//printf("Frag:%s",ipt);
     free(ipt);
     glLinkProgram(shaderProgram);glUseProgram(shaderProgram);
     glEnable(GL_DEPTH_TEST);glDepthFunc(GL_LEQUAL);
     //mats(shaderProgram,0,0);
-    float blue=.9;
-    glClearColor(0.5,0.5,blue,0.8);
+    float blue=1;
+    glClearColor(0.6,0.6,blue,0.8);
     glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);
     //glDrawArrays(GL_TRIANGLES,0,36);
     SDL_GL_SwapWindow(win);
@@ -685,7 +680,7 @@ void play(){
             }
             continue;
         }
-        //if(clock()-now>333){draw();now=clock();}
+        if(clock()-now>333){draw();now=clock();}
         reciv();
         cur=0;
         rdVar();//Packet length
