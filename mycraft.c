@@ -16,22 +16,24 @@
 #include <time.h>
 #include <math.h>
 //202.115.22.200:8111
-const unsigned short port=8111;
-const char ip[]="202.115.22.200",username[]="Xyct";
+const unsigned short port=25565, ApiVersion=578;//1.15.2 20200711
+const char ip[]="106.12.203.34",username[]="Xyct";
 extern const double Pi;
 int cur=1,masz,iscp,tick;
 double playerX,playerY,playerZ,preX,preY,preZ;
 float playerYaw,playerPitch;
 unsigned char sd[203333],rcv[2033456];
-char nttyp[100][100]={"AreaEffectCloud","ArmorStand","Arrow","Bat","Blaze","Boat","cat","CaveSpider","Chicken","Cod","Cow","Creeper","Donkey","Dolphin","DragonFireball","Drowned","ElderGuardian","EnderCrystal","EnderDragon","Enderman","Endermite","EvocationFangs","EvocationIllager","XPOrb","EyeOfEnderSignal","FallingSand","FireworksRocketEntity","Ghast","Giant","Guardian","Horse","Husk","IllusionIllager","Item","ItemFrame","Fireball (ghast)","LeashKnot","Llama","LlamaSpit","LavaSlime (Magma Cube)","MinecartRideable","MinecartChest","MinecartCommandBlock"};
+char nttyp[100][100]={"AreaEffectCloud","ArmorStand","Arrow","Bat","Bee","Blaze","Boat","cat","CaveSpider","Chicken","Cod","Cow","Creeper","Donkey","Dolphin","DragonFireball","Drowned","ElderGuardian","EnderCrystal","EnderDragon","Enderman","Endermite","Evoker","Evoker Fangs","XPOrb","EyeOfEnderSignal","FallingBlock","FireworksRocket","Fox","Ghast","Giant","Guardian","Hoglin","Horse","Husk","Illusioner","Iron Golem","Item","ItemFrame","Fireball","LeashKnot","Lightning Bolt","Llama","LlamaSpit","LavaSlime (Magma Cube)","MinecartRideable","MinecartChest","MinecartCommandBlock","Minecart with Furnace","Minecart with Hopper","MinecartSpawner","MinecartTNT","Mule","Mushroom","Ocelot","Painting","Panda","Parrot","Phantom","Pig","Piglin","Piglin Brute","Pillager","Polar Bear","Primed TNT","Pufferfish","Rabbit","Ravager","Salmon","Sheep","Shulker","Shulker Bullet","Silverfish","Skeleton","Skeleton Horse","Slime"};
+const int MAX_NTT_NUM=10000;
 void mats(int,double px,double py,double pz,double x,double y,double z,double,double);
-struct entity{
-    short type;
+typedef struct Entity{//id < 0 means empty
+    short id,type;
     short vx,vy,vz;
-    float pitch,yaw;
+    short pitch,yaw,headPitch;
     double x,y,z;
     char data[256];
-}ntt[20000];
+} entity;
+entity ntt[10004];
 typedef struct chunkSection{
     short num,pallete,bits;
     long long data[64*14+5];
@@ -120,7 +122,7 @@ void handshake(char status){
    sd[cur++]=0;
    /*Data*/
    //Protocol version
-   wtVar(498);//1.14.4 20190828
+   wtVar(ApiVersion);
    //String length
    wtVar(strlen(ip));
    memcpy(sd+cur,ip,strlen(ip));
@@ -285,12 +287,12 @@ void draw(){
 void move(){
     if(abs(playerX*playerY*playerZ)<0.1)return;
     int ret=cur;cur=1;sd[cur++]=0;sd[cur++]=0x11;
-    wtF((char*)&playerX,8);wtF((char*)&playerY,8);wtF((char*)&playerZ,8);wtF((char*)&playerYaw,4);wtF((char*)&playerPitch,4);
-    //cur-=32;memcpy(rcv+cur,sd+cur,32);
-    //rdF((char*)&playerX,8);rdF((char*)&playerY,8);rdF((char*)&playerZ,8);
-    //rdF((char*)&playerYaw,4);rdF((char*)&playerPitch,4);
+    wtF((char*)&playerX,8);wtF((char*)&playerY,8);wtF((char*)&playerZ,8);
     printf("New pos(%lf,%lf,%lf)\tYaw: %f\tPitch: %f\n",playerX,playerY,playerZ,playerYaw,playerPitch);
     sd[cur++]=1;sd[0]=cur-1;sen(cur);cur=ret;
+}
+entity* findNtt(int id){
+    return ntt+(id%MAX_NTT_NUM);
 }
 int bitLeft=0;
 unsigned long long theLong=0;
@@ -387,57 +389,59 @@ int hndl(){//Main logic
                     //printf("UUID: \n");
                     cur+=16;//unsigned 128-bit integer
                     int type=rdVar();
-                    ntt[l%=20000].type=type;
-                    printf("Type: %hhx(%s)\n",type,nttyp[type]);
-                    rdF((char*)&X,8);rdF((char*)&Y,8);rdF((char*)&Z,8);ntt[l].x=X,ntt[l].y=Y,ntt[l].z=Z;
+                    entity* mob=findNtt(l);
+                    if(mob->id>0)puts("Error: current entity discovery algorithm should be optimized!");
+                    mob->id=l;mob->type=type;
+                    printf("Type: %d(%s)\n",type,nttyp[type]);
+                    rdF((char*)&X,8);rdF((char*)&Y,8);rdF((char*)&Z,8);mob->x=X,mob->y=Y,mob->z=Z;
                     printf("Position: (%lf,%lf,%lf)\n",X,Y,Z);
-                    printf("Pitch: %d/256\tYaw: %d/256\tHead Pitch: %d/256",rcv[cur+1],rcv[cur],rcv[cur+2]);
+                    printf("Pitch: %d/256\tYaw: %d/256\tHead Pitch: %d/256",mob->pitch=rcv[cur+1],mob->yaw=rcv[cur],mob->headPitch=rcv[cur+2]);
                     cur+=3;
-                    printf("Velocity: (%d,%d,%d)\n\n",(short)rd(2),(short)rd(2),(short)rd(2));
+                    printf("Velocity: (%d,%d,%d)\n\n",mob->vx=rd(2),mob->vy=rd(2),mob->vz=rd(2));
                     //Entity metadata
                 break;
                 case 6:
                     printf("An entity changes animation\n");
                 break;
-                case 10:
+                case 11:
                     //puts("Block action");
                 break;
-                case 11:
+                case 12:
                     puts("Block changes");
                 break;
-                case 0x0d://Server difficulty
+                case 0x0e://Server difficulty
                     printf("Difficulty: %s\n",rcv[cur]&1?rcv[cur]&2?"hard":"easy":rcv[cur]&2?"normal":"peaceful");
                 break;
-                case 0x0e://Chat message
+                case 0x0f://Chat message
                     printString();
                     puts("");
                 break;
-                case 0x10://Declare commands
+                case 0x11://Declare commands
                     printf("%d commands declared\n",rdVar());
                 break;
-                case 0x14:
+                case 0x15:
                     printf("My inventory changes\n");
                 break;
-                case 0x16:
+                case 0x17:
                     printf("Slot set\n");
                 break;
-                case 0x18://Plugin message
+                case 0x19://Plugin message
                     puts("Plugin message");
                 break;
-                case 0x19:
+                case 0x1a:
                     printf("A sound plays\n");
                 break;
-                case 0x1b://Entity status
+                case 0x1c://Entity status
                     printf("Entity ID: %d\nStatus: ",l=(int)rd(4));
                     printf("%hhx\t%s\n",rcv[cur],nttyp[ntt[l%20000].type]);
                 break;
-                case 0x1c:
+                case 0x1d:
                     puts("An explosion happens");
                 break;
-                case 0x1e:
+                case 0x1f:
                     puts("Game state changes");
                 break;
-                case 0x20://Keep alive
+                case 0x21://Keep alive
                     puts("\tKeep alive");
                     int org=cur;
                     cur=1;
@@ -446,20 +450,20 @@ int hndl(){//Main logic
                     memcpy(sd+cur,rcv+org,8);cur+=8;
                     sd[0]=cur-1;
                     sen(cur);
-                    //if(!ct)
-                    //cht();
+                    if(!ct)
+                    cht();
                 break;
-                case 0x21://chunk data
+                case 0x22://chunk data
                     rdChunk();
                     //puts("Chunk OK");
                 break;
-                case 0x22:
+                case 0x23:
                     puts("An effect(sound/particle) is played");
                 break;
-                case 0x24:
+                case 0x25:
                     printf("Light levels of a chunk updated\t");
                 break;
-                case 0x25://Join game
+                case 0x26://Join game
                     printf("EID: %d\n",(int)rd(4));
                     cur++;//Game mode: survival
                     printf("Dimension: ");
@@ -471,19 +475,19 @@ int hndl(){//Main logic
                     }//unsigned byte difficulty
                     //String level type default
                 break;
-                case 0x28:
-                    //puts("An entity moves");
-                break;
                 case 0x29:
-                    //puts("An entity rotates and moves");
+                    puts("An entity moves");
                 break;
                 case 0x2a:
-                    //puts("An entity rotates");
+                    puts("An entity rotates and moves");
                 break;
                 case 0x2b:
+                    puts("An entity rotates");
+                break;
+                case 0x2c:
                     puts("An entity initialized");
                 break;
-                case 0x31://Player abilities
+                case 0x32://Player abilities
                        //Send client settings
                     /*puts("========Sending client settings========");
                     cur=1;
@@ -500,7 +504,7 @@ int hndl(){//Main logic
                     sd[0]=cur-1;
                     sen(cur);*/
                 break;
-                case 0x35://Player position and look
+                case 0x36://Player position and look
                     puts("========Get player position and look========");
                     rdF((char*)&playerX,8);rdF((char*)&playerY,8);rdF((char*)&playerZ,8);
                     rdF((char*)&playerYaw,4);rdF((char*)&playerPitch,4);
@@ -514,25 +518,32 @@ Player look:\nYaw: %f\tPitch: %f\n",playerX,playerY,playerZ,playerYaw,playerPitc
                     wtVar(tid);sd[0]=cur-1;sen(cur);
                     move();
                 break;
-                case 0x37:
-                    //puts("Destroy entity");
+                case 0x38:
+                    puts("Destroy entities:");
+                    l=rdVar();
+                    for(int i=0;i<l;++i){
+                        int id=rdVar();
+                        printf("%d\t",id);
+                        entity* tt=findNtt(id);
+                        tt->id=-1;//Destroy this entity
+                    }
                 break;
-                case 0x3b:
+                case 0x3c:
                     //puts("An entity head look changes");
                 break;
-                case 0x3f://Slot selection
+                case 0x40://Slot selection
                     printf("Slot number %d selected.\n",rcv[cur]);
                 break;
-                case 0x43:
-                    //puts("Entity metadata received");
-                break;
-                case 0x45:
-                    //puts("Entity velocity received");
+                case 0x44:
+                    puts("Entity metadata received");
                 break;
                 case 0x46:
-                    //puts("Entity equipment");
+                    puts("Entity velocity received");
                 break;
-                case 0x48:
+                case 0x47:
+                    puts("Entity equipment");
+                break;
+                case 0x49:
                     printf("Health: ");
                     float health,saturation;
                     int food;
@@ -543,7 +554,7 @@ Player look:\nYaw: %f\tPitch: %f\n",playerX,playerY,playerZ,playerYaw,playerPitc
                     rdF((char*)&saturation,4);
                     printf("saturation: %f/5\n",saturation);
                 break;
-                case 0x4e:
+                case 0x4f:
                     //puts("Time changes");
                     rd(8);//printf("World age:%lld\t",rd(8));
                     long long ticks=rd(8);tick=(ticks+6000)%24000;
@@ -551,16 +562,16 @@ Player look:\nYaw: %f\tPitch: %f\n",playerX,playerY,playerZ,playerYaw,playerPitc
                     printf("Time of day:%lld\t\t",ticks);
                     printf("%d -th tick of today, i.e. %02d:%02d\n",tick,tick*18/5/3600,(tick*18/5%3600)/60);
                 break;
-                case 0x51:
-                    //puts("Plays hardcoded sound effect");
+                case 0x52:
+                    puts("Plays hardcoded sound effect");
                 break;
-                case 0x56:
-                    //puts("An entity teleports");
+                case 0x57:
+                    puts("An entity teleports");
                 break;
-                case 0x58:
-                    //puts("Entity properties changed");
+                case 0x59:
+                    puts("Entity properties changed");
                 break;
-                case 0x1a://Disconnect
+                case 0x1b://Disconnect
                     puts("Disconnect for: ");
                     printString();
                     puts("");
