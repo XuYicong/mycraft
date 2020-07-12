@@ -9,12 +9,12 @@
 #include <GL/glew.h>
 #include <SDL2/SDL.h>
 #include <zlib.h>
-#include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
 #include <unistd.h>
 #include <time.h>
 #include <math.h>
+#include "objects.h"
 //202.115.22.200:8111
 const unsigned short port=25565, ApiVersion=578;//1.15.2 20200711
 const char ip[]="106.12.203.34",username[]="Xyct";
@@ -23,22 +23,9 @@ int cur=1,masz,iscp,tick;
 double playerX,playerY,playerZ,preX,preY,preZ;
 float playerYaw,playerPitch;
 unsigned char sd[203333],rcv[2033456];
-char nttyp[100][100]={"AreaEffectCloud","ArmorStand","Arrow","Bat","Bee","Blaze","Boat","cat","CaveSpider","Chicken","Cod","Cow","Creeper","Donkey","Dolphin","DragonFireball","Drowned","ElderGuardian","EnderCrystal","EnderDragon","Enderman","Endermite","Evoker","Evoker Fangs","XPOrb","EyeOfEnderSignal","FallingBlock","FireworksRocket","Fox","Ghast","Giant","Guardian","Hoglin","Horse","Husk","Illusioner","Iron Golem","Item","ItemFrame","Fireball","LeashKnot","Lightning Bolt","Llama","LlamaSpit","LavaSlime (Magma Cube)","MinecartRideable","MinecartChest","MinecartCommandBlock","Minecart with Furnace","Minecart with Hopper","MinecartSpawner","MinecartTNT","Mule","Mushroom","Ocelot","Painting","Panda","Parrot","Phantom","Pig","Piglin","Piglin Brute","Pillager","Polar Bear","Primed TNT","Pufferfish","Rabbit","Ravager","Salmon","Sheep","Shulker","Shulker Bullet","Silverfish","Skeleton","Skeleton Horse","Slime"};
+char nttyp[123][123]={"AreaEffectCloud","ArmorStand","Arrow","Bat","Bee","Blaze","Boat","cat","CaveSpider","Chicken","Cod","Cow","Creeper","Donkey","Dolphin","DragonFireball","Drowned","ElderGuardian","EnderCrystal","EnderDragon","Enderman","Endermite","Evoker","Evoker Fangs","XPOrb","EyeOfEnderSignal","FallingBlock","FireworksRocket","Fox","Ghast","Giant","Guardian","Hoglin","Horse","Husk","Illusioner","Iron Golem","Item","ItemFrame","Fireball","LeashKnot","Lightning Bolt","Llama","LlamaSpit","LavaSlime (Magma Cube)","MinecartRideable","MinecartChest","MinecartCommandBlock","Minecart with Furnace","Minecart with Hopper","MinecartSpawner","MinecartTNT","Mule","Mushroom","Ocelot","Painting","Panda","Parrot","Phantom","Pig","Piglin","Piglin Brute","Pillager","Polar Bear","Primed TNT","Pufferfish","Rabbit","Ravager","Salmon","Sheep","Shulker","Shulker Bullet","Silverfish","Skeleton","Skeleton Horse","Slime"};
 const int MAX_NTT_NUM=10000;
-void mats(int,double px,double py,double pz,double x,double y,double z,double,double);
-typedef struct Entity{//id < 0 means empty
-    short id,type;
-    short vx,vy,vz;
-    short pitch,yaw,headPitch;
-    double x,y,z;
-    char data[256];
-} entity;
 entity ntt[10004];
-typedef struct chunkSection{
-    short num,pallete,bits;
-    long long data[64*14+5];
-    int palle[4096];
-} chunkSect;
 short chunkct;
 struct chunk{
     int x,z;
@@ -393,10 +380,8 @@ int hndl(){//Main logic
                     if(mob->id>0)puts("Error: current entity discovery algorithm should be optimized!");
                     mob->id=l;mob->type=type;
                     printf("Type: %d(%s)\n",type,nttyp[type]);
-                    rdF((char*)&X,8);rdF((char*)&Y,8);rdF((char*)&Z,8);mob->x=X,mob->y=Y,mob->z=Z;
-                    printf("Position: (%lf,%lf,%lf)\n",X,Y,Z);
-                    printf("Pitch: %d/256\tYaw: %d/256\tHead Pitch: %d/256",mob->pitch=rcv[cur+1],mob->yaw=rcv[cur],mob->headPitch=rcv[cur+2]);
-                    cur+=3;
+                    teleportEntity(mob);
+                    printf("Head Pitch: %d/256",mob->headPitch=rcv[cur++]);
                     printf("Velocity: (%d,%d,%d)\n\n",mob->vx=rd(2),mob->vy=rd(2),mob->vz=rd(2));
                     //Entity metadata
                 break;
@@ -475,14 +460,27 @@ int hndl(){//Main logic
                     }//unsigned byte difficulty
                     //String level type default
                 break;
-                case 0x29:
-                    puts("An entity moves");
+                case 0x29://Entity moves
+                {//Fuck C
+                    l=rdVar();
+                    entity*tt=findNtt(l);
+                    moveEntity(tt);
+                    tt->onGround=rd(1);}
                 break;
-                case 0x2a:
-                    puts("An entity rotates and moves");
+                case 0x2a://entity moves and rotates
+                {
+                    l=rdVar();
+                    entity*tt=findNtt(l);
+                    moveEntity(tt);
+                    rotateEntity(tt);
+                    tt->onGround=rd(1);}
                 break;
-                case 0x2b:
-                    puts("An entity rotates");
+                case 0x2b://set entity angle
+                {
+                    l=rdVar();
+                    entity*tt=findNtt(l);
+                    rotateEntity(tt);
+                    tt->onGround=rd(1);}
                 break;
                 case 0x2c:
                     puts("An entity initialized");
@@ -528,8 +526,9 @@ Player look:\nYaw: %f\tPitch: %f\n",playerX,playerY,playerZ,playerYaw,playerPitc
                         tt->id=-1;//Destroy this entity
                     }
                 break;
-                case 0x3c:
-                    //puts("An entity head look changes");
+                case 0x3c://Entity head horizontal
+                    l=rdVar();
+                    findNtt(l)->headYaw=rd(1);
                 break;
                 case 0x40://Slot selection
                     printf("Slot number %d selected.\n",rcv[cur]);
@@ -537,8 +536,11 @@ Player look:\nYaw: %f\tPitch: %f\n",playerX,playerY,playerZ,playerYaw,playerPitc
                 case 0x44:
                     puts("Entity metadata received");
                 break;
-                case 0x46:
-                    puts("Entity velocity received");
+                case 0x46://Entity set velocity
+                {
+                    l=rdVar();
+                    entity*tt=findNtt(l);
+                    tt->vx=rd(2);tt->vy=rd(2);tt->vz=rd(2);}
                 break;
                 case 0x47:
                     puts("Entity equipment");
@@ -565,8 +567,9 @@ Player look:\nYaw: %f\tPitch: %f\n",playerX,playerY,playerZ,playerYaw,playerPitc
                 case 0x52:
                     puts("Plays hardcoded sound effect");
                 break;
-                case 0x57:
-                    puts("An entity teleports");
+                case 0x57://Teleport entity
+                    l=rdVar();
+                    teleportEntity(findNtt(l));
                 break;
                 case 0x59:
                     puts("Entity properties changed");

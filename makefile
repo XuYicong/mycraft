@@ -2,7 +2,7 @@
 EXE_DIR = .
 EXE = $(EXE_DIR)/mycraft
 
-SRC= mycraft.c
+SRC= mycraft.c objects.c
 # generic build details
 CP=     g++
 CC=     gcc
