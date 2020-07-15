@@ -2,7 +2,7 @@
 EXE_DIR = .
 EXE = $(EXE_DIR)/mycraft
 
-SRC= mycraft.c objects.c
+SRC= mycraft.c objects.c graphic.c
 # generic build details
 CP=     g++
 CC=     gcc
@@ -32,3 +32,4 @@ clean:
 
 # dependencies
 mats.o:mats.cpp
+mycraft.o:objects.h
