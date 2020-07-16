@@ -27,9 +27,9 @@ int dx[]={-1,0,0,1,0,0},dy[]={0,1,0,0,-1,0},dz[]={0,0,-1,0,0,1},flor=2333;
     }
 }*/
 void draw(){
-    if(player->y<1||chunkct<9)return;
-    if(0&&blkct<1){
-        for(int i=0;i<9;++i){
+    if(player->y<1)return;
+    if(0){
+        for(int i=0;i<441;++i){//逻辑需改成：遍历所有chk，若存在且离我近则渲染
             for(int j=0;j<16;++j){
                 if(chk[i].section[j].num<1)continue;
                 int last=0,bitct=0;
@@ -69,8 +69,10 @@ int shad(char *name,char*const ipt){
     return I;
 }
 void play(){
+    win=SDL_CreateWindow("Mycraft",SDL_WINDOWPOS_CENTERED,SDL_WINDOWPOS_CENTERED,1440,900,SDL_WINDOW_OPENGL);
+    if(!win){printf("Create window error %s\n",SDL_GetError());return -2;}
     SDL_GLContext contx;
-    if(NULL==(contx=SDL_GL_CreateContext(win))){printf("Creat context error %s\n",SDL_GetError());return;}
+    if(NULL==(contx=SDL_GL_CreateContext(win))){printf("Create context error %s\n",SDL_GetError());return;}
     if(SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK,SDL_GL_CONTEXT_PROFILE_CORE)|SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION,2))puts("GL_SetAttribute error");
     GLfloat cube[144]={-0.48f,-0.48f,-0.48f, // triangle 1 : begin
     -0.48f, 0.48f, 0.48f,
@@ -181,19 +183,17 @@ void play(){
     glDeleteBuffers(1,&vbo);
     glDeleteVertexArrays(1,&vao);
     SDL_GL_DeleteContext(contx);
+    SDL_DestroyWindow(win);
 }
 int main(int argc,char **argv){
     if(SDL_Init(SDL_INIT_VIDEO)){puts("SDL Init error");return -1;}
-    SDL_Thread*network=SDL_CreateThread(networkThread,"network thread",argv[1]);
+    SDL_Thread*network=SDL_CreateThread(networkThread,"network thread",argc>1?argv[1]:NULL);
     SDL_DetachThread(network);
-    win=SDL_CreateWindow("Mycraft",SDL_WINDOWPOS_CENTERED,SDL_WINDOWPOS_CENTERED,1440,900,SDL_WINDOW_OPENGL);
-    if(!win){printf("Create window error %s\n",SDL_GetError());return -2;}
 
-    while(gameState!=EXIT)if(gameState==PLAY)play();//Main function
+    while(gameState!=EXIT && gameState!=PLAY);
+    if(gameState==PLAY)play();//Main function
     puts("\nbye");
     
-    SDL_DestroyWindow(win);
-    win=NULL;
     SDL_Quit();
    return 0;
 }

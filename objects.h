@@ -8,6 +8,19 @@ typedef enum GlobalGameState{
     PLAY,
     EXIT
 } GameState;
+typedef struct chunkSection{
+    short num,pallete,bits;
+    long long data[64*14+5];
+    int palle[4096];
+} chunkSect;
+typedef struct Chunk{
+    int x,z;
+    chunkSect section[16];
+} chunk;
+typedef struct Block{
+    int x,y,z;
+} block;
+extern chunk chk[444];
 extern GameState gameState;
 extern unsigned char sd[203333],rcv[2033456];
 extern char ct;//0 if user want to input a chat
@@ -20,11 +33,6 @@ void draw(void);//render a frame
 void play(void);//game loop
 void move();
 int networkThread(char*data);//network loop
-typedef struct chunkSection{
-    short num,pallete,bits;
-    long long data[64*14+5];
-    int palle[4096];
-} chunkSect;
 extern int cur,tick;
 typedef struct Entity{//id < 0 means empty
     char onGround;

@@ -21,7 +21,7 @@ COBJ= $(SRC:.c=.o)
 # build executable
 
 $(EXE): $(COBJ) mats.o
-	$(CC) $(COBJ) mats.o -lSDL2 -lm -lGL -lGLEW $(CFLAGS) -o $(EXE) 
+	$(CC) $(COBJ) mats.o -lresolv -lSDL2 -lm -lGL -lGLEW $(CFLAGS) -o $(EXE) 
 
 #mats.o:
 #	$(CP) -o mats.o mats.cpp

@@ -6,6 +6,8 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+#include <arpa/nameser.h>
+#include <resolv.h>
 #include <zlib.h>
 #include <string.h>
 #include <stdlib.h>
@@ -13,26 +15,22 @@
 #include <math.h>
 #include "objects.h"
 //202.115.22.200:8111
-const unsigned short port=25565, ApiVersion=578;//1.15.2 20200711
+const unsigned short ApiVersion=578;//1.15.2 20200711
+unsigned short port=25565;//May be changed by DNS SRV response
 const char ip[]="mcyou.cc",username[]="Xyct";
 //const char ip[]="106.12.203.34",username[]="Xyct";
 //maximum no-compression packet size, is-compression
 int cur=1,masz,iscp,tick;
 //double playerX,playerY,playerZ,preX,preY,preZ;
 float playerYaw,playerPitch;//More accurate angel for render
-unsigned char sd[203333],rcv[2033456];
+unsigned char sd[203333]="_minecraft._tcp.",rcv[2033456];
 char nttyp[123][123]={"AreaEffectCloud","ArmorStand","Arrow","Bat","Bee","Blaze","Boat","cat","CaveSpider","Chicken","Cod","Cow","Creeper","Donkey","Dolphin","DragonFireball","Drowned","ElderGuardian","EnderCrystal","EnderDragon","Enderman","Endermite","Evoker","Evoker Fangs","XPOrb","EyeOfEnderSignal","FallingBlock","FireworksRocket","Fox","Ghast","Giant","Guardian","Hoglin","Horse","Husk","Illusioner","Iron Golem","Item","ItemFrame","Fireball","LeashKnot","Lightning Bolt","Llama","LlamaSpit","LavaSlime (Magma Cube)","MinecartRideable","MinecartChest","MinecartCommandBlock","Minecart with Furnace","Minecart with Hopper","MinecartSpawner","MinecartTNT","Mule","Mushroom","Ocelot","Painting","Panda","Parrot","Phantom","Pig","Piglin","Piglin Brute","Pillager","Polar Bear","Primed TNT","Pufferfish","Rabbit","Ravager","Salmon","Sheep","Shulker","Shulker Bullet","Silverfish","Skeleton","Skeleton Horse","Slime"};
 const int MAX_NTT_NUM=10000;
 entity ntt[10004],*player;
 short chunkct;
-struct chunk{
-    int x,z;
-    chunkSect section[16];
-}chk[444];
-struct block{
-    int x,y,z;
-}blk[123456];
-int blkct;
+chunk chk[444];
+block blk[123456];
+//int blkct;
 void wtVar(unsigned int a){
     do{
         sd[cur]=a&0x7f;
@@ -80,7 +78,6 @@ void wt(int a,int c){
         a>>=8;
     }
 }
-struct sockaddr_in server;
 int client;
 void reciv(){
     int ret=0,now=0;
@@ -116,6 +113,7 @@ void handshake(char status){
    wt(port,2);
    //Next state
    wtVar(status);
+    puts(rcv);
    //Total length
    sd[0]=cur-1;
    sen(cur);
@@ -132,7 +130,7 @@ void ping(){
    wt(time(0),8);
    sd[0]=cur-1;
    sen(cur);
-    reciv();
+    //reciv();//only used for speed testing, some servers don't response
     puts("====Ping finished====");
 }
 void uncomp(){
@@ -150,6 +148,7 @@ void uncomp(){
 }
 void login(){
     handshake(2);
+    puts(rcv);
     cur=1;
     sd[cur++]=0;//login start
     wtVar(strlen(username));
@@ -525,6 +524,7 @@ Player look:\nYaw: %f\tPitch: %f\n",player->x,player->y,player->z,playerYaw,play
                     puts("Disconnect for: ");
                     printString();
                     puts("");
+                    gameState=EXIT;
                 return 1;
                 default:
                     printf("ID: %hhx\n",id);
@@ -532,20 +532,92 @@ Player look:\nYaw: %f\tPitch: %f\n",player->x,player->y,player->z,playerYaw,play
             }
     return 0;
 }
+int resolveSRV(const char* host, char* resolved) {//_minecraft._tcp.host-name
+	struct __res_state res;
+	if (res_ninit(&res) != 0)
+		return -1;
+	unsigned char answer[49500];
+	int len = res_nsearch(&res, host, C_IN, T_SRV, answer, sizeof(answer));
+
+	if (len < 0) {
+		fprintf(stderr, "res_nsearch: %s\n", hstrerror(h_errno));
+		return -1;
+	}
+
+	ns_msg handle;
+	ns_rr rr;
+
+	ns_initparse(answer, len, &handle);
+
+	for (int i = 0; i < ns_msg_count(handle, ns_s_an); i++) {
+		if (ns_parserr(&handle, ns_s_an, i, &rr) < 0 || ns_rr_type(rr) != T_SRV) {
+			perror("ns_parserr");
+			continue;
+		}
+		if (dn_expand(ns_msg_base(handle), ns_msg_end(handle), ns_rr_rdata(rr) + 3 * NS_INT16SZ, resolved,
+		              32768) < 0)
+			continue;
+        port= ns_get16(ns_rr_rdata(rr) + 2 * NS_INT16SZ);
+        //puts(resolved);
+		return 0;
+	}
+    strcpy(resolved,host);
+	return -1;
+}
 int networkThread(char*data){
-   if((client=socket(AF_INET,SOCK_STREAM,0))<0){
+   /*if((client=socket(AF_INET,SOCK_STREAM,0))<0){
        puts("client socket create fail");
+       gameState=EXIT;
        return 1;
    }
+    struct sockaddr_in server;
    server.sin_family=AF_INET;
    server.sin_port=htons(port);
-   server.sin_addr.s_addr=inet_addr(ip);
+   server.sin_addr.s_addr=inet_addr(ip);*/
    puts("Connecting...");
-   if(connect(client,(struct sockaddr*)&server,sizeof(server))<0){
-       puts("Connect error");
-       return 1;
-   }
-    if(data[0]=='p'){
+
+   struct addrinfo hints;
+    struct addrinfo *result, *rp;
+       memset(&hints, 0, sizeof(struct addrinfo));
+       hints.ai_family = AF_UNSPEC;    /* Allow IPv4 or IPv6 */
+        hints.ai_socktype = SOCK_STREAM; /* TCP socket */
+       hints.ai_flags = 0;
+       hints.ai_protocol = 0;          /* Any protocol */
+       strcat(sd,ip);
+       resolveSRV(sd,rcv);
+       sprintf(sd,"%d",port);
+       int s = getaddrinfo(rcv, sd, &hints, &result);
+       //printf("%d\n",s);
+       if (s != 0) {
+           fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(s));
+           gameState=EXIT;
+            exit(EXIT_FAILURE);
+        }
+
+           /* getaddrinfo() returns a list of address structures.
+              Try each address until we successfully connect(2).
+              If socket(2) (or connect(2)) fails, we (close the socket
+              and) try the next address. */
+           for (rp = result; rp != NULL; rp = rp->ai_next) {
+               client = socket(rp->ai_family, rp->ai_socktype,
+                            rp->ai_protocol);
+               if (client == -1)
+                   continue;
+               if (connect(client, rp->ai_addr, rp->ai_addrlen) != -1)
+                   break;                  /* Success */
+               close(client);
+           }
+
+       if (rp == NULL) {               /* No address succeeded */
+            fprintf(stderr, "Could not connect\n");
+           gameState=EXIT;
+           exit(EXIT_FAILURE);
+       }
+
+           freeaddrinfo(result);           /* No longer needed */
+
+
+    if(data!=NULL&&data[0]=='p'){
         gameState=PING;
         ping();
         gameState=EXIT;
