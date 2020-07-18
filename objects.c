@@ -22,3 +22,33 @@ int teleportEntity(entity*mob){
     rotateEntity(mob);
     return 0;
 }
+chunk*getChunk(int x,int z){
+    return chk[(x%50+50)%50]+((z%50+50)%50);
+}
+char isAir(int id){
+    return !(id>>4);
+}
+int getBlockInPallete(chunkSect*this,int id){
+    return this->pallete?this->palle[id]:id;
+}
+int getBlockInSection(chunkSect*this,int x,int y,int z){
+    short bits=this->bits;
+    int idx=(((y<<4)+z)<<4)+x;//with increasing x coordinates, within rows of increasing z coordinates, within layers of increasing y coordinates. 
+    idx*=bits;
+    int pos=idx&0x3f, index=idx>>6;
+    int id=this->palle[index]>>pos;
+    if((pos+bits)&(1<<6)){
+        id|=this->palle[index+1]<<(64-pos);
+    }
+    return getBlockInPallete(this,id&((1<<bits)-1));
+}
+int getBlockInChunk(chunk*this,int x,int y,int z){
+    int sectionId=y>>4;
+    if(this->mask&(1<<sectionId)){
+        return getBlockInSection(this->section+sectionId,x,y&0xf,z);
+    }else return 0;//Air
+}
+int getBlock(int x,int y,int z){
+    int chunkX=floor(x/16.0), chunkZ=floor(z/16.0);
+    return getBlockInChunk(getChunk(chunkX,chunkZ),x-(chunkX<<4),y,z-(chunkZ<<4));
+}

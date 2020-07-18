@@ -28,7 +28,7 @@ char nttyp[123][123]={"AreaEffectCloud","ArmorStand","Arrow","Bat","Bee","Blaze"
 const int MAX_NTT_NUM=10000;
 entity ntt[10004],*player;
 short chunkct;
-chunk chk[444];
+chunk chk[50][50];
 block blk[123456];
 //int blkct;
 void wtVar(unsigned int a){
@@ -113,7 +113,6 @@ void handshake(char status){
    wt(port,2);
    //Next state
    wtVar(status);
-    puts(rcv);
    //Total length
    sd[0]=cur-1;
    sen(cur);
@@ -148,7 +147,6 @@ void uncomp(){
 }
 void login(){
     handshake(2);
-    puts(rcv);
     cur=1;
     sd[cur++]=0;//login start
     wtVar(strlen(username));
@@ -227,13 +225,14 @@ int bitLeft=0;
 unsigned long long theLong=0;
 int rdNBTcpd(){//NBT compound
     int id=rcv[cur++];
+    //printf("NBT compound type id:%d\t",id);
     if(!id)return 1;
     int l=rd(2);//Length of name
-    //printf("Name length %d\t",l);
-    cur+=l;
-    /*while(l>0){--l;
-        putchar(rcv[cur++]);
+    /*printf("Name length %d\t",l);
+    for(int i=0;i<l;++i){
+        putchar(rcv[cur+i]);
     }*/
+    cur+=l;
     switch(id){
         case 0xc://Long Array
             l=rd(4);//Number of longs
@@ -248,6 +247,7 @@ int rdNBTcpd(){//NBT compound
 void rdNBT(){
     cur++;//Root Compound Start 0x0a
     int l=rd(2);//Length of title
+    for(int i=0;i<l;++i){putchar(rcv[cur+i]);}
     cur+=l;//Skip title
     while(!rdNBTcpd());
     return;
@@ -256,45 +256,47 @@ void rdChunk(){
     ++chunkct;
     printf("Chunk ");//Chunk data
     int x=rd(4),z;
-    int mask,full;
+    int full;
     printf("Coords: (%d,%d)\t",x,z=rd(4));
+    chunk*this=getChunk(x,z);
+    this->x=x;  this->z=z;
     x*=16;z*=16;
     printf("%sfull chunk\t",(full=rcv[cur++])?"Is ":"Not ");
-    printf("%x\t",mask=rdVar());
+    printf("%x\t",this->mask=rdVar());
     rdNBT();
+    if(full){
+        int l=1024;
+        //printf("Biome array length:%d\t",l);
+        cur+=l*4;//Array of integers biomes;
+    }
     int l=rdVar();
     printf("Data size: %d bytes\t",l);//Size of data in bytes
     //int debug=cur;
-    int idx=0;
-    for(int i=0;i<443;++i)if(chk[i].section[0].num==0){
-        idx=i;break;
-    }
     for(int i=0;i<16;i++){//Array of chunk section
-        if(!((1<<i)&mask)) continue;
+        if(!((1<<i)&this->mask)) continue;
         rd(2);//Number of non-air blocks
         unsigned char bits=rcv[cur++];//Unsigned byte Bits per blocks
         char pallete=bits<9;
         if(pallete&&bits<4)bits=4;
         if(!pallete)bits=14;
-        chk[idx].section[i].pallete=pallete;
-        chk[idx].section[i].bits=bits;
+        this->section[i].pallete=pallete;
+        this->section[i].bits=bits;
         //printf("\n%d%d\n",pallete,bits);
         if(pallete){
              int size=rdVar();//Length
              for(int j=0;j<size;j++){//Array of Varint
-                chk[idx].section[i].palle[j]=rdVar();
-                //printf("%d ",palle[j]);
+                this->section[i].palle[j]=rdVar();
              }//puts("Reading pallete");
         }
-        int l=chk[idx].section[i].num=rdVar();//Number of longs
+        int l=this->section[i].num=rdVar();//Number of longs
+        //printf("\tnumber of lons:%d ",l);
         for(int j=0;j<l;++j){
-             chk[idx].section[i].data[j]=rd(8);
+             this->section[i].data[j]=rd(8);
         }
     }//Chunk sections end
-    if(full)cur+=256*4;//256 integers biomes;
-    //printf("\nExpected data: %d bytes, %d bytes in fact\tFull: %d\tcur: %d\n",l,cur-debug,full,cur);
     int blockEntity=rdVar();//Number of block entities in NBT tags;
     printf("%d block entities\n",blockEntity);
+    this->loaded=1;
 }
 int hndl(){//Main logic
     int l,id;
@@ -454,7 +456,7 @@ int hndl(){//Main logic
                     rdF((char*)&playerYaw,4);rdF((char*)&playerPitch,4);//store yaw and pitch accurately
                     printf("Player position: (%lf,%lf,%lf)\n\
 Player look:\nYaw: %f\tPitch: %f\n",player->x,player->y,player->z,playerYaw,playerPitch);
-                    draw();
+                    //draw();
                     printf("Flag: %hhx\nTeleport ID: ",rcv[cur++]);
                     int tid;
                     printf("%d\n",tid=rdVar());
@@ -502,6 +504,9 @@ Player look:\nYaw: %f\tPitch: %f\n",player->x,player->y,player->z,playerYaw,play
                     rdF((char*)&saturation,4);
                     printf("saturation: %f/5\n",saturation);
                 break;
+                case 0x4d:
+                    //puts("update a scoreboard item");
+                break;
                 case 0x4f:
                     //puts("Time changes");
                     rd(8);//printf("World age:%lld\t",rd(8));
@@ -533,10 +538,12 @@ Player look:\nYaw: %f\tPitch: %f\n",player->x,player->y,player->z,playerYaw,play
     return 0;
 }
 int resolveSRV(const char* host, char* resolved) {//_minecraft._tcp.host-name
+    //Anything went wrong and return origin value
+    strcpy(resolved,host);
 	struct __res_state res;
 	if (res_ninit(&res) != 0)
 		return -1;
-	unsigned char answer[49500];
+	unsigned char answer[40000];
 	int len = res_nsearch(&res, host, C_IN, T_SRV, answer, sizeof(answer));
 
 	if (len < 0) {
@@ -548,7 +555,7 @@ int resolveSRV(const char* host, char* resolved) {//_minecraft._tcp.host-name
 	ns_rr rr;
 
 	ns_initparse(answer, len, &handle);
-
+//parse SRV response
 	for (int i = 0; i < ns_msg_count(handle, ns_s_an); i++) {
 		if (ns_parserr(&handle, ns_s_an, i, &rr) < 0 || ns_rr_type(rr) != T_SRV) {
 			perror("ns_parserr");
@@ -558,10 +565,9 @@ int resolveSRV(const char* host, char* resolved) {//_minecraft._tcp.host-name
 		              32768) < 0)
 			continue;
         port= ns_get16(ns_rr_rdata(rr) + 2 * NS_INT16SZ);
-        //puts(resolved);
+        //Read and store target hostname and port
 		return 0;
 	}
-    strcpy(resolved,host);
 	return -1;
 }
 int networkThread(char*data){
@@ -583,13 +589,14 @@ int networkThread(char*data){
         hints.ai_socktype = SOCK_STREAM; /* TCP socket */
        hints.ai_flags = 0;
        hints.ai_protocol = 0;          /* Any protocol */
-       strcat(sd,ip);
-       resolveSRV(sd,rcv);
-       sprintf(sd,"%d",port);
-       int s = getaddrinfo(rcv, sd, &hints, &result);
+       char*s=(char*)sd,*r=(char*)rcv;
+       strcat(s,ip);
+       resolveSRV(s,r);
+       sprintf(s,"%d",port);
+       int err = getaddrinfo(r, s, &hints, &result);
        //printf("%d\n",s);
-       if (s != 0) {
-           fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(s));
+       if (err != 0) {
+           fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(err));
            gameState=EXIT;
             exit(EXIT_FAILURE);
         }

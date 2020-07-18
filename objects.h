@@ -9,24 +9,27 @@ typedef enum GlobalGameState{
     EXIT
 } GameState;
 typedef struct chunkSection{
-    short num,pallete,bits;
-    long long data[64*14+5];
-    int palle[4096];
+    short num,pallete,bits,numVertices;
+    long long data[64*14+3];
+    int palle[1<<8];
+    GLuint vao,vbo;
 } chunkSect;
 typedef struct Chunk{
-    int x,z;
+    char loaded,rendered;
+    int x,z,mask;
     chunkSect section[16];
 } chunk;
 typedef struct Block{
     int x,y,z;
 } block;
-extern chunk chk[444];
+extern chunk chk[50][50];
 extern GameState gameState;
 extern unsigned char sd[203333],rcv[2033456];
 extern char ct;//0 if user want to input a chat
 extern const double Pi;
 extern float playerYaw,playerPitch;
-void mats(int,double px,double py,double pz,double x,double y,double z,double,double);
+void mats_mvp(int,double px,double py,double pz,double x,double y,double z,double,double);
+void mats_vp(int,double x,double y,double z,double,double);
 unsigned long long rd(int);
 void rdF(char*target,int numBytes);
 void draw(void);//render a frame
@@ -46,4 +49,7 @@ extern entity*player;
 extern int moveEntity(entity*);
 extern int teleportEntity(entity*);
 extern int rotateEntity(entity*);
+extern chunk*getChunk(int x,int z);
+extern char isAir(int blockId);
+extern int getBlock(int x,int y,int z);
 extern char nttyp[123][123];
