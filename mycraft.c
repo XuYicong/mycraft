@@ -277,19 +277,21 @@ void rdChunk(){
         rd(2);//Number of non-air blocks
         unsigned char bits=rcv[cur++];//Unsigned byte Bits per blocks
         char pallete=bits<9;
-        if(pallete&&bits<4)bits=4;
+        //if(pallete&&bits<4)bits=4;
         if(!pallete)bits=14;
         this->section[i].pallete=pallete;
         this->section[i].bits=bits;
         //printf("\n%d%d\n",pallete,bits);
         if(pallete){
-             int size=rdVar();//Length
+             int size=this->section[i].palleSize=rdVar();//Length
+             //printf("bits: %d Pallete size:%d\n",bits,size);
              for(int j=0;j<size;j++){//Array of Varint
                 this->section[i].palle[j]=rdVar();
              }//puts("Reading pallete");
         }
         int l=this->section[i].num=rdVar();//Number of longs
-        //printf("\tnumber of lons:%d ",l);
+        if(l!=64*bits)printf("error: number of longs too little\t");
+        //printf("\tnumber of longs:%d ",l);
         for(int j=0;j<l;++j){
              this->section[i].data[j]=rd(8);
         }
@@ -474,12 +476,19 @@ Player look:\nYaw: %f\tPitch: %f\n",player->x,player->y,player->z,playerYaw,play
                         tt->id=-1;//Destroy this entity
                     }
                 break;
+                case 0x3b://Respawn player
+                    //TODO: delete all entities
+                    unloadAllChunks();
+                break;
                 case 0x3c://Entity head horizontal
                     l=rdVar();
                     findNtt(l)->headYaw=rd(1);
                 break;
                 case 0x40://Slot selection
                     printf("Slot number %d selected.\n",rcv[cur]);
+                break;
+                case 0x43:
+                    //puts("Display scoreboard by score name");
                 break;
                 case 0x44:
                     puts("Entity metadata received");
@@ -504,6 +513,9 @@ Player look:\nYaw: %f\tPitch: %f\n",player->x,player->y,player->z,playerYaw,play
                     rdF((char*)&saturation,4);
                     printf("saturation: %f/5\n",saturation);
                 break;
+                case 0x4a:
+                    //puts("create a scoreboard objective");
+                break;
                 case 0x4d:
                     //puts("update a scoreboard item");
                 break;
@@ -517,6 +529,9 @@ Player look:\nYaw: %f\tPitch: %f\n",player->x,player->y,player->z,playerYaw,play
                 break;
                 case 0x52:
                     puts("Plays hardcoded sound effect");
+                break;
+                case 0x54:
+                    //puts("Player list header and footer");
                 break;
                 case 0x57://Teleport entity
                     l=rdVar();

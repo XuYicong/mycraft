@@ -9,8 +9,8 @@ typedef enum GlobalGameState{
     EXIT
 } GameState;
 typedef struct chunkSection{
-    short num,pallete,bits,numVertices;
-    long long data[64*14+3];
+    short num,pallete,bits,numVertices,palleSize;
+    unsigned long long data[64*14+3];
     int palle[1<<8];
     GLuint vao,vbo;
 } chunkSect;
@@ -50,6 +50,7 @@ extern int moveEntity(entity*);
 extern int teleportEntity(entity*);
 extern int rotateEntity(entity*);
 extern chunk*getChunk(int x,int z);
+extern int unloadAllChunks();
 extern char isAir(int blockId);
 extern int getBlock(int x,int y,int z);
 extern char nttyp[123][123];

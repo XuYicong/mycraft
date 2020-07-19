@@ -16,6 +16,7 @@ int vertIdx[6][4]={
     {0,1,3,2},{4,5,7,6},
     {0,2,6,4},{1,3,7,5},
     {0,1,5,4},{2,3,7,6}};
+const int chunkRenderRadius=3;
 int rerenderChunk(chunk*ck){
     if(!ck->loaded)return -1;
     for(int i=0;i<4;++i)if(!getChunk(ck->x+dx[i],ck->z+dz[i])->loaded)return -2;
@@ -23,7 +24,7 @@ int rerenderChunk(chunk*ck){
     ck->rendered=1;
     GLfloat *vert=NULL;
     int vertSize=0;
-    int baseX=ck->x<<4, baseZ=ck->z<<4;
+    int baseX=ck->x*16, baseZ=ck->z*16;
     //puts("rerender chunk");
     for(int i=0;i<16;++i){//For each section
         if(((1<<i)&ck->mask)==0)continue;
@@ -41,7 +42,7 @@ int rerenderChunk(chunk*ck){
                     //puts("是air吗?");
                     int blockId=getBlock(X,Y,Z);
                     if(isAir(blockId))continue;
-                    printf("\t(%d,%d,%d):%d:%d\n",X,Y,Z,blockId>>4,blockId&0xf);
+                    //printf("\t(%d,%d,%d):%d:%d\n",X,Y,Z,blockId>>4,blockId&0xf);
                     //puts("不是");
                     int cood[]={X,Y,Z};
                     for(int m=0;m<6;++m){//For each surface of the block
@@ -68,6 +69,16 @@ int rerenderChunk(chunk*ck){
         glVertexAttribPointer(0,3,GL_FLOAT,GL_FALSE,0,0);
         glEnableVertexAttribArray(0);
     }
+    return 0;
+}
+int unrenderChunk(chunk*ck){
+    for(int i=0;i<16;++i){
+        if(ck->mask&(1<<i)){
+            glDeleteBuffers(1,&ck->section[i].vbo);
+            glDeleteVertexArrays(1,&ck->section[i].vao);
+        }
+    }
+    ck->rendered=0;
     return 0;
 }
 int renderChunk(chunk*ck){
@@ -97,12 +108,12 @@ void draw(){//Draw a frame
     glClearColor(offset*0.6,offset*0.6,offset*1,1);
     glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);
     mats_vp(shaderProgram,player->x,player->y,player->z,playerYaw,playerPitch);
-    int chunkX=player->x/16,chunkZ=player->z/16;
-    for(int x=chunkX;x<=chunkX;++x){
-        for(int z=chunkZ;z<=chunkZ;++z){//For nearby chunk, render each section
+    int chunkX=floor(player->x/16.0),chunkZ=floor(player->z/16.0);
+    for(int x=chunkX-chunkRenderRadius;x<=chunkX+chunkRenderRadius;++x){
+        for(int z=chunkZ-chunkRenderRadius;z<=chunkZ+chunkRenderRadius;++z){//For nearby chunk, render each section
             chunk*this=getChunk(x,z);
             if(!this->loaded){
-                if(this->rendered);//this->rendered=0;//TODO:Unload chunk
+                if(this->rendered)unrenderChunk(this);
                 continue;
             }
             if(!this->rendered)renderChunk(this);
@@ -135,15 +146,15 @@ void play(){
     SDL_GLContext contx;
     if(NULL==(contx=SDL_GL_CreateContext(win))){printf("Create context error %s\n",SDL_GetError());return;}
     if(SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK,SDL_GL_CONTEXT_PROFILE_CORE)|SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION,2))puts("GL_SetAttribute error");
-    GLfloat cube[144]={-0.48f,-0.48f,-0.48f, // triangle 1 : begin
-    -0.48f, 0.48f, 0.48f,
-    0.48f,-0.48f, 0.48f};
+    //GLfloat cube[144]={-0.48f,-0.48f,-0.48f, // triangle 1 : begin
+    //-0.48f, 0.48f, 0.48f,
+    //0.48f,-0.48f, 0.48f};
     glewExperimental = GL_TRUE;glewInit();
-    GLuint vbo,vao;glGenBuffers(1,&vbo);glGenVertexArrays(1,&vao);
-    glBindBuffer(GL_ARRAY_BUFFER,vbo);
-    glBindVertexArray(vao);
-    glBufferData(GL_ARRAY_BUFFER,sizeof(cube),cube,GL_STATIC_DRAW);
-    glVertexAttribPointer(0,3,GL_FLOAT,GL_FALSE,0,0);
+    //GLuint vbo,vao;glGenBuffers(1,&vbo);glGenVertexArrays(1,&vao);
+    //glBindBuffer(GL_ARRAY_BUFFER,vbo);
+    //glBindVertexArray(vao);
+    //glBufferData(GL_ARRAY_BUFFER,sizeof(cube),cube,GL_STATIC_DRAW);
+    //glVertexAttribPointer(0,3,GL_FLOAT,GL_FALSE,0,0);
     glEnableVertexAttribArray(0);
     shaderProgram=glCreateProgram(),vertID=glCreateShader(GL_VERTEX_SHADER),fragID=glCreateShader(GL_FRAGMENT_SHADER);
     glAttachShader(shaderProgram,vertID);glAttachShader(shaderProgram,fragID);
@@ -151,8 +162,11 @@ void play(){
     int I=shad("vert.glsl",ipt);
     glShaderSource(vertID,1,(const char*const*)&ipt,&I);
     glCompileShader(vertID);
-    glGetShaderiv(vertID,GL_INFO_LOG_LENGTH,&I);
-    glGetShaderInfoLog(vertID,I,NULL,ipt);//printf("Vert:%s",ipt);
+    glGetShaderiv(vertID, GL_COMPILE_STATUS, &I);
+    if (I == GL_FALSE){
+        glGetShaderiv(vertID,GL_INFO_LOG_LENGTH,&I);
+        glGetShaderInfoLog(vertID,I,NULL,ipt);printf("Vert:%s",ipt);
+    }
     I=shad("frag.glsl",ipt);
     glShaderSource(fragID,1,(const char*const*)&ipt,&I);
     glCompileShader(fragID);
@@ -241,8 +255,8 @@ void play(){
     glDeleteShader(vertID);
     glDeleteShader(fragID);
     glDisableVertexAttribArray(0);
-    glDeleteBuffers(1,&vbo);
-    glDeleteVertexArrays(1,&vao);
+    //glDeleteBuffers(1,&vbo);
+    //glDeleteVertexArrays(1,&vao);
     SDL_GL_DeleteContext(contx);
     SDL_DestroyWindow(win);
 }

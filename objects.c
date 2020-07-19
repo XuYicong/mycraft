@@ -25,20 +25,34 @@ int teleportEntity(entity*mob){
 chunk*getChunk(int x,int z){
     return chk[(x%50+50)%50]+((z%50+50)%50);
 }
+int unloadAllChunks(){
+    for(int i=0;i<50;++i){
+        for(int j=0;j<50;++j){
+            chk[i][j].loaded=0;
+        }
+    }
+    return 0;
+}
 char isAir(int id){
-    return !(id>>4);
+    return !(id/*>>4*/);//TODO: cave air
 }
 int getBlockInPallete(chunkSect*this,int id){
-    return this->pallete?this->palle[id]:id;
+    if(this->pallete){
+        if(id>this->palleSize)printf("error: block id %d exceeds pallete size %d!\n",id,this->palleSize);
+        return this->palle[id];
+    }
+    return id;
 }
 int getBlockInSection(chunkSect*this,int x,int y,int z){
     short bits=this->bits;
     int idx=(((y<<4)+z)<<4)+x;//with increasing x coordinates, within rows of increasing z coordinates, within layers of increasing y coordinates. 
-    idx*=bits;
-    int pos=idx&0x3f, index=idx>>6;
-    int id=this->palle[index]>>pos;
-    if((pos+bits)&(1<<6)){
-        id|=this->palle[index+1]<<(64-pos);
+    if(idx>=4096)puts("Invalid relative coordinates in section");
+    idx*=bits;//order of bits in the array
+    //Order of bits in the long and order of the long in the array
+    int pos=idx&0x3f, index=idx>>6;//Since a long is 64 bits aka 1<<6
+    unsigned int id=this->data[index]>>pos;//Cut out less significant bits
+    if((pos+bits)>64){//if right open order of this block exceeds 64
+        id|=this->data[index+1]<<(64-pos);
     }
     return getBlockInPallete(this,id&((1<<bits)-1));
 }
@@ -50,5 +64,5 @@ int getBlockInChunk(chunk*this,int x,int y,int z){
 }
 int getBlock(int x,int y,int z){
     int chunkX=floor(x/16.0), chunkZ=floor(z/16.0);
-    return getBlockInChunk(getChunk(chunkX,chunkZ),x-(chunkX<<4),y,z-(chunkZ<<4));
+    return getBlockInChunk(getChunk(chunkX,chunkZ),x-(chunkX*16),y,z-(chunkZ*16));
 }

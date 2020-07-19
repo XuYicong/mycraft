@@ -7,6 +7,7 @@ out vec4 color;
 //uniform vec4 blockColor;
 void main(void) {
     //gl_FragColor = vec4(ex_Color);
-    color=vec4(0.4,0.4,0.2,0.2);
+    //color=vec4(0.4,0.4,0.2,0.2);
+    color=ex_Color;
     //color=blockColor;
 }
